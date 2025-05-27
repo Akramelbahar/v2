@@ -1,3 +1,4 @@
+// ets-reselec-backend/routes/clients.js
 const express = require('express');
 const router = express.Router();
 const { verifyToken, checkRole } = require('../middleware/auth');

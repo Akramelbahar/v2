@@ -1,3 +1,4 @@
+// ets-reselec-backend/controllers/authController.js
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { validationResult } = require('express-validator');
@@ -24,7 +25,7 @@ const login = async (req, res) => {
 
     const { username, password } = req.body;
 
-    // Find user by username or email
+    // Find user by username with role and permissions
     const user = await User.findOne({ 
       where: { username },
       include: [{
@@ -33,7 +34,8 @@ const login = async (req, res) => {
         include: [{
           model: Permission,
           as: 'permissions',
-          attributes: ['module', 'action']
+          attributes: ['module', 'action'],
+          through: { attributes: [] } // Don't include junction table attributes
         }]
       }]
     });
@@ -43,27 +45,30 @@ const login = async (req, res) => {
     }
 
     // Check password
-    const isPasswordValid = await user.comparePassword(password);
+    const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       return sendError(res, 'Invalid credentials', 401);
     }
 
     // Generate token
-    const token = user.generateToken();
+    const token = generateToken(user.id);
 
     // Format permissions
     const permissions = user.role?.permissions?.map(p => `${p.module}:${p.action}`) || [];
 
+    // Prepare user data for response
+    const userData = {
+      id: user.id,
+      nom: user.nom,
+      username: user.username,
+      section: user.section,
+      role: user.role?.nom || null,
+      permissions
+    };
+
     sendSuccess(res, {
       token,
-      user: {
-        id: user.id,
-        nom: user.nom,
-        username: user.username,
-        section: user.section,
-        role: user.role?.nom,
-        permissions
-      }
+      user: userData
     }, 'Login successful');
 
   } catch (error) {
@@ -97,11 +102,14 @@ const register = async (req, res) => {
       }
     }
 
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     // Create user
     const user = await User.create({
       nom,
       username,
-      password,
+      password: hashedPassword,
       section,
       role_id: role_id || 1 // Default to basic role
     });
@@ -117,7 +125,7 @@ const register = async (req, res) => {
     });
 
     // Generate token
-    const token = user.generateToken();
+    const token = generateToken(user.id);
 
     sendSuccess(res, {
       token,
@@ -141,7 +149,8 @@ const getProfile = async (req, res) => {
         include: [{
           model: Permission,
           as: 'permissions',
-          attributes: ['id', 'module', 'action', 'description']
+          attributes: ['id', 'module', 'action', 'description'],
+          through: { attributes: [] }
         }]
       }]
     });
@@ -193,11 +202,13 @@ const updateProfile = async (req, res) => {
     
     // Handle password change
     if (currentPassword && newPassword) {
-      const isPasswordValid = await user.comparePassword(currentPassword);
+      const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
       if (!isPasswordValid) {
         return sendError(res, 'Current password is incorrect', 401);
       }
-      user.password = newPassword;
+      
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      user.password = hashedPassword;
     }
     
     await user.save();

@@ -1,6 +1,7 @@
+// ets-reselec-backend/controllers/clientController.js
 const { validationResult } = require('express-validator');
 const { Op } = require('sequelize');
-const { Client, User, Equipment, Intervention } = require('../models');
+const { Client, User, Equipment, Intervention, sequelize } = require('../models');
 const { sendSuccess, sendError, sendPaginatedResponse } = require('../utils/responseUtils');
 
 // GET /api/clients
@@ -33,32 +34,34 @@ const getAllClients = async (req, res) => {
       whereClause.secteur_activite = secteur_activite;
     }
 
-    // Execute query
+    // Execute query with basic attributes first
     const { count, rows } = await Client.findAndCountAll({
       where: whereClause,
       include: [{
         model: User,
         as: 'creerPar',
-        attributes: ['id', 'nom', 'username']
+        attributes: ['id', 'nom', 'username'],
+        required: false
       }],
-      attributes: {
-        include: [
-          [
-            sequelize.literal(`(
-              SELECT COUNT(*)
-              FROM Equipement
-              WHERE Equipement.proprietaire_id = Client.id
-            )`),
-            'equipmentCount'
-          ]
-        ]
-      },
       limit: parseInt(limit),
       offset: parseInt(offset),
       order: [[sortBy, sortOrder]]
     });
 
-    sendPaginatedResponse(res, rows, page, limit, count);
+    // Add equipment count to each client
+    const clientsWithCount = await Promise.all(
+      rows.map(async (client) => {
+        const equipmentCount = await Equipment.count({
+          where: { proprietaire_id: client.id }
+        });
+        return {
+          ...client.toJSON(),
+          equipmentCount
+        };
+      })
+    );
+
+    sendPaginatedResponse(res, clientsWithCount, page, limit, count);
 
   } catch (error) {
     console.error('Get clients error:', error);
@@ -76,19 +79,8 @@ const getClientById = async (req, res) => {
         {
           model: User,
           as: 'creerPar',
-          attributes: ['id', 'nom', 'username']
-        },
-        {
-          model: Equipment,
-          as: 'equipements',
-          attributes: ['id', 'nom', 'marque', 'modele', 'type_equipement', 'cout'],
-          include: [{
-            model: Intervention,
-            as: 'interventions',
-            attributes: ['id', 'date', 'statut'],
-            order: [['date', 'DESC']],
-            limit: 5
-          }]
+          attributes: ['id', 'nom', 'username'],
+          required: false
         }
       ]
     });
@@ -97,18 +89,23 @@ const getClientById = async (req, res) => {
       return sendError(res, 'Client not found', 404);
     }
 
-    // Get intervention count
-    const interventionCount = await Intervention.count({
-      include: [{
-        model: Equipment,
-        as: 'equipement',
-        where: { proprietaire_id: id }
-      }]
+    // Get equipment count
+    const equipmentCount = await Equipment.count({
+      where: { proprietaire_id: id }
+    });
+
+    // Get recent equipment
+    const equipment = await Equipment.findAll({
+      where: { proprietaire_id: id },
+      attributes: ['id', 'nom', 'marque', 'modele', 'type_equipement', 'cout'],
+      limit: 5,
+      order: [['id', 'DESC']]
     });
 
     const clientData = {
       ...client.toJSON(),
-      interventionCount
+      equipmentCount,
+      equipment
     };
 
     sendSuccess(res, clientData);
@@ -140,7 +137,8 @@ const createClient = async (req, res) => {
       include: [{
         model: User,
         as: 'creerPar',
-        attributes: ['id', 'nom', 'username']
+        attributes: ['id', 'nom', 'username'],
+        required: false
       }]
     });
 
@@ -179,7 +177,8 @@ const updateClient = async (req, res) => {
       include: [{
         model: User,
         as: 'creerPar',
-        attributes: ['id', 'nom', 'username']
+        attributes: ['id', 'nom', 'username'],
+        required: false
       }]
     });
 
