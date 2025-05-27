@@ -96,31 +96,34 @@ const clientValidations = {
       .withMessage('City cannot exceed 100 characters'),
     
     body('codePostal')
-      .optional()
-      .matches(/^[0-9A-Za-z\s\-]{2,20}$/)
-      .withMessage('Invalid postal code format'),
+      .optional({ checkFalsy: true })
+      .matches(/^$|^[0-9A-Za-z\s\-]{2,20}$/)
+      .withMessage('Postal code must contain only letters, numbers, spaces or hyphens (2-20 chars)'),
     
     body('tel')
-      .optional()
-      .matches(/^[\d\s\-\+\(\)\.]{8,20}$/)
-      .withMessage('Invalid phone number format'),
+      .optional({ checkFalsy: true })
+      .matches(/^$|^[\d\s\-\+\(\)\.]{8,20}$/)
+      .withMessage('Phone number must contain 8-20 digits with optional formatting'),
     
     body('email')
-      .optional()
+      .optional({ checkFalsy: true })
+      .normalizeEmail()
       .isEmail()
-      .withMessage('Invalid email format')
-      .normalizeEmail(),
+      .withMessage('Please provide a valid email address'),
     
     body('email_contact')
-      .optional()
+      .optional({ checkFalsy: true })
+      .normalizeEmail()
       .isEmail()
-      .withMessage('Invalid contact email format')
-      .normalizeEmail(),
+      .withMessage('Please provide a valid contact email address'),
     
     body('siteWeb')
-      .optional()
-      .isURL()
-      .withMessage('Invalid website URL format')
+      .optional({ checkFalsy: true })
+      .isURL({
+        require_protocol: true,
+        protocols: ['http', 'https']
+      })
+      .withMessage('Please provide a valid URL including http:// or https://')
   ],
 
   update: [
@@ -136,16 +139,16 @@ const clientValidations = {
       .withMessage('Company name must be between 2 and 255 characters'),
     
     body('email')
-      .optional()
+      .optional({ checkFalsy: true })
+      .normalizeEmail()
       .isEmail()
-      .withMessage('Invalid email format')
-      .normalizeEmail(),
+      .withMessage('Please provide a valid email address'),
     
     body('email_contact')
-      .optional()
-      .isEmail()
-      .withMessage('Invalid contact email format')
+      .optional({ checkFalsy: true })
       .normalizeEmail()
+      .isEmail()
+      .withMessage('Please provide a valid contact email address')
   ],
 
   delete: [

@@ -37,10 +37,7 @@ const Client = sequelize.define('Client', {
     type: DataTypes.STRING(20),
     allowNull: true,
     validate: {
-      is: {
-        args: /^[\d\s\-\+\(\)\.]+$/i,
-        msg: 'Invalid phone number format'
-      }
+      
     }
   },
   fax: {
@@ -49,22 +46,14 @@ const Client = sequelize.define('Client', {
   },
   email: {
     type: DataTypes.STRING(100),
-    allowNull: true,
-    validate: {
-      isEmail: {
-        msg: 'Invalid email format'
-      }
-    }
+    allowNull: true
+    
   },
   siteWeb: {
     type: DataTypes.STRING(255),
     allowNull: true,
     field: 'siteWeb',
-    validate: {
-      isUrl: {
-        msg: 'Invalid URL format'
-      }
-    }
+    
   },
   contact_principal: {
     type: DataTypes.STRING(100),
@@ -80,12 +69,7 @@ const Client = sequelize.define('Client', {
   },
   email_contact: {
     type: DataTypes.STRING(100),
-    allowNull: true,
-    validate: {
-      isEmail: {
-        msg: 'Invalid contact email format'
-      }
-    }
+    allowNull: true
   },
   registre_commerce: {
     type: DataTypes.STRING(100),

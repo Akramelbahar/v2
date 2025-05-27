@@ -178,31 +178,75 @@ const Dashboard = () => {
   };
 
   // Form Components
-  const ClientForm = ({ client, onSubmit, loading }) => {
-    const [formData, setFormData] = useState({
-      nom_entreprise: client?.nom_entreprise || '',
-      secteur_activite: client?.secteur_activite || '',
-      adresse: client?.adresse || '',
-      ville: client?.ville || '',
-      codePostal: client?.codePostal || '',
-      tel: client?.tel || '',
-      email: client?.email || '',
-      contact_principal: client?.contact_principal || '',
-      telephone_contact: client?.telephone_contact || '',
-      email_contact: client?.email_contact || ''
-    });
+  
+const ClientForm = ({ client, onSubmit, loading }) => {
+  const [formData, setFormData] = useState({
+    nom_entreprise: client?.nom_entreprise || '',
+    secteur_activite: client?.secteur_activite || '',
+    adresse: client?.adresse || '',
+    ville: client?.ville || '',
+    codePostal: client?.codePostal || '',
+    tel: client?.tel || '',
+    fax: client?.fax || '',
+    email: client?.email || '',
+    siteWeb: client?.siteWeb || '',
+    contact_principal: client?.contact_principal || '',
+    poste_contact: client?.poste_contact || '',
+    telephone_contact: client?.telephone_contact || '',
+    email_contact: client?.email_contact || '',
+    registre_commerce: client?.registre_commerce || '',
+    forme_juridique: client?.forme_juridique || ''
+  });
 
-    const handleSubmit = (e) => {
-      e.preventDefault();
+  const [errors, setErrors] = useState({});
+
+  const validateForm = () => {
+    const newErrors = {};
+
+    if (!formData.nom_entreprise.trim()) {
+      newErrors.nom_entreprise = 'Le nom de l\'entreprise est requis';
+    }
+
+    if (formData.email && !/\S+@\S+\.\S+/.test(formData.email)) {
+      newErrors.email = 'Format d\'email invalide';
+    }
+
+    if (formData.email_contact && !/\S+@\S+\.\S+/.test(formData.email_contact)) {
+      newErrors.email_contact = 'Format d\'email de contact invalide';
+    }
+
+    if (formData.siteWeb && !/^https?:\/\/.+/.test(formData.siteWeb)) {
+      newErrors.siteWeb = 'Format d\'URL invalide (doit commencer par http:// ou https://)';
+    }
+
+    if (formData.tel && !/^[\d\s\-\+\(\)\.]{8,20}$/.test(formData.tel)) {
+      newErrors.tel = 'Format de téléphone invalide';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (validateForm()) {
       onSubmit(formData);
-    };
+    }
+  };
 
-    const handleChange = (field, value) => {
-      setFormData(prev => ({ ...prev, [field]: value }));
-    };
+  const handleChange = (field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    // Clear error when user starts typing
+    if (errors[field]) {
+      setErrors(prev => ({ ...prev, [field]: '' }));
+    }
+  };
 
-    return (
-      <form onSubmit={handleSubmit} className="space-y-4">
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Company Information */}
+      <div className="bg-gray-50 p-4 rounded-lg">
+        <h4 className="text-md font-semibold text-gray-900 mb-4">Informations de l'entreprise</h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -211,18 +255,24 @@ const Dashboard = () => {
             <input
               type="text"
               required
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                errors.nom_entreprise ? 'border-red-300' : 'border-gray-300'
+              }`}
               value={formData.nom_entreprise}
               onChange={(e) => handleChange('nom_entreprise', e.target.value)}
             />
+            {errors.nom_entreprise && (
+              <p className="text-red-500 text-sm mt-1">{errors.nom_entreprise}</p>
+            )}
           </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Secteur d'activité
             </label>
             <input
               type="text"
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               value={formData.secteur_activite}
               onChange={(e) => handleChange('secteur_activite', e.target.value)}
               list="sectors"
@@ -233,118 +283,308 @@ const Dashboard = () => {
               ))}
             </datalist>
           </div>
+
           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Forme juridique
+            </label>
+            <select
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={formData.forme_juridique}
+              onChange={(e) => handleChange('forme_juridique', e.target.value)}
+            >
+              <option value="">Sélectionner</option>
+              <option value="SARL">SARL</option>
+              <option value="SA">SA</option>
+              <option value="SNC">SNC</option>
+              <option value="SCS">SCS</option>
+              <option value="SCA">SCA</option>
+              <option value="Entreprise_Individuelle">Entreprise Individuelle</option>
+              <option value="EURL">EURL</option>
+              <option value="Autre">Autre</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Registre de commerce
+            </label>
+            <input
+              type="text"
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={formData.registre_commerce}
+              onChange={(e) => handleChange('registre_commerce', e.target.value)}
+              placeholder="Ex: RC123456"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Address Information */}
+      <div className="bg-gray-50 p-4 rounded-lg">
+        <h4 className="text-md font-semibold text-gray-900 mb-4">Adresse</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Adresse
             </label>
             <input
               type="text"
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               value={formData.adresse}
               onChange={(e) => handleChange('adresse', e.target.value)}
+              placeholder="Rue, avenue, numéro..."
             />
           </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Ville
             </label>
             <input
               type="text"
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               value={formData.ville}
               onChange={(e) => handleChange('ville', e.target.value)}
             />
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Code postal
+            </label>
+            <input
+              type="text"
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={formData.codePostal}
+              onChange={(e) => handleChange('codePostal', e.target.value)}
+              placeholder="Ex: 20000"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Contact Information */}
+      <div className="bg-gray-50 p-4 rounded-lg">
+        <h4 className="text-md font-semibold text-gray-900 mb-4">Coordonnées</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Téléphone
             </label>
             <input
               type="tel"
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                errors.tel ? 'border-red-300' : 'border-gray-300'
+              }`}
               value={formData.tel}
               onChange={(e) => handleChange('tel', e.target.value)}
+              placeholder="Ex: +212 5XX XX XX XX"
+            />
+            {errors.tel && (
+              <p className="text-red-500 text-sm mt-1">{errors.tel}</p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Fax
+            </label>
+            <input
+              type="tel"
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={formData.fax}
+              onChange={(e) => handleChange('fax', e.target.value)}
+              placeholder="Ex: +212 5XX XX XX XX"
             />
           </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Email
             </label>
             <input
               type="email"
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                errors.email ? 'border-red-300' : 'border-gray-300'
+              }`}
               value={formData.email}
               onChange={(e) => handleChange('email', e.target.value)}
+              placeholder="contact@entreprise.com"
             />
+            {errors.email && (
+              <p className="text-red-500 text-sm mt-1">{errors.email}</p>
+            )}
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Site web
+            </label>
+            <input
+              type="url"
+              className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                errors.siteWeb ? 'border-red-300' : 'border-gray-300'
+              }`}
+              value={formData.siteWeb}
+              onChange={(e) => handleChange('siteWeb', e.target.value)}
+              placeholder="https://www.entreprise.com"
+            />
+            {errors.siteWeb && (
+              <p className="text-red-500 text-sm mt-1">{errors.siteWeb}</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Contact Person Information */}
+      <div className="bg-gray-50 p-4 rounded-lg">
+        <h4 className="text-md font-semibold text-gray-900 mb-4">Personne de contact</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Contact principal
             </label>
             <input
               type="text"
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               value={formData.contact_principal}
               onChange={(e) => handleChange('contact_principal', e.target.value)}
+              placeholder="Nom du responsable"
             />
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Poste / Fonction
+            </label>
+            <input
+              type="text"
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={formData.poste_contact}
+              onChange={(e) => handleChange('poste_contact', e.target.value)}
+              placeholder="Ex: Directeur technique"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Téléphone contact
+            </label>
+            <input
+              type="tel"
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={formData.telephone_contact}
+              onChange={(e) => handleChange('telephone_contact', e.target.value)}
+              placeholder="Ex: +212 6XX XX XX XX"
+            />
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Email contact
             </label>
             <input
               type="email"
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                errors.email_contact ? 'border-red-300' : 'border-gray-300'
+              }`}
               value={formData.email_contact}
               onChange={(e) => handleChange('email_contact', e.target.value)}
+              placeholder="contact@entreprise.com"
             />
+            {errors.email_contact && (
+              <p className="text-red-500 text-sm mt-1">{errors.email_contact}</p>
+            )}
           </div>
         </div>
-        
-        <div className="flex justify-end space-x-2 pt-4">
-          <button
-            type="button"
-            onClick={closeModal}
-            className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-          >
-            Annuler
-          </button>
-          <button
-            type="submit"
-            disabled={loading}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center space-x-2"
-          >
-            {loading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
-            <span>{client ? 'Modifier' : 'Créer'}</span>
-          </button>
-        </div>
-      </form>
-    );
+      </div>
+      
+      <div className="flex justify-end space-x-2 pt-4">
+        <button
+          type="button"
+          onClick={closeModal}
+          disabled={loading}
+          className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+        >
+          Annuler
+        </button>
+        <button
+          type="submit"
+          disabled={loading}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center space-x-2"
+        >
+          {loading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
+          <span>{client ? 'Modifier' : 'Créer'}</span>
+        </button>
+      </div>
+    </form>
+  );
+};
+
+const EquipmentForm = ({ equipment, onSubmit, loading }) => {
+  const [formData, setFormData] = useState({
+    nom: equipment?.nom || '',
+    marque: equipment?.marque || '',
+    modele: equipment?.modele || '',
+    type_equipement: equipment?.type_equipement || '',
+    etatDeReception: equipment?.etatDeReception || '',
+    valeur: equipment?.valeur || '',
+    cout: equipment?.cout || '',
+    proprietaire_id: equipment?.proprietaire_id || ''
+  });
+
+  const [errors, setErrors] = useState({});
+
+  const validateForm = () => {
+    const newErrors = {};
+
+    if (!formData.nom.trim()) {
+      newErrors.nom = 'Le nom de l\'équipement est requis';
+    }
+
+    if (!formData.proprietaire_id) {
+      newErrors.proprietaire_id = 'Le propriétaire est requis';
+    }
+
+    if (formData.cout && isNaN(parseFloat(formData.cout))) {
+      newErrors.cout = 'Le coût doit être un nombre valide';
+    }
+
+    if (formData.cout && parseFloat(formData.cout) < 0) {
+      newErrors.cout = 'Le coût ne peut pas être négatif';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
-  const EquipmentForm = ({ equipment, onSubmit, loading }) => {
-    const [formData, setFormData] = useState({
-      nom: equipment?.nom || '',
-      marque: equipment?.marque || '',
-      modele: equipment?.modele || '',
-      type_equipement: equipment?.type_equipement || '',
-      etatDeReception: equipment?.etatDeReception || '',
-      valeur: equipment?.valeur || '',
-      cout: equipment?.cout || '',
-      proprietaire_id: equipment?.proprietaire_id || ''
-    });
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (validateForm()) {
+      // Convert numeric fields
+      const processedData = {
+        ...formData,
+        cout: formData.cout ? parseFloat(formData.cout) : null,
+        proprietaire_id: parseInt(formData.proprietaire_id)
+      };
+      onSubmit(processedData);
+    }
+  };
 
-    const handleSubmit = (e) => {
-      e.preventDefault();
-      onSubmit(formData);
-    };
+  const handleChange = (field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    // Clear error when user starts typing
+    if (errors[field]) {
+      setErrors(prev => ({ ...prev, [field]: '' }));
+    }
+  };
 
-    const handleChange = (field, value) => {
-      setFormData(prev => ({ ...prev, [field]: value }));
-    };
-
-    return (
-      <form onSubmit={handleSubmit} className="space-y-4">
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Basic Information */}
+      <div className="bg-gray-50 p-4 rounded-lg">
+        <h4 className="text-md font-semibold text-gray-900 mb-4">Informations de base</h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -353,69 +593,129 @@ const Dashboard = () => {
             <input
               type="text"
               required
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                errors.nom ? 'border-red-300' : 'border-gray-300'
+              }`}
               value={formData.nom}
               onChange={(e) => handleChange('nom', e.target.value)}
+              placeholder="Ex: Moteur pompe principale"
             />
+            {errors.nom && (
+              <p className="text-red-500 text-sm mt-1">{errors.nom}</p>
+            )}
           </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Type d'équipement
             </label>
             <select
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               value={formData.type_equipement}
               onChange={(e) => handleChange('type_equipement', e.target.value)}
             >
               <option value="">Sélectionner un type</option>
               {equipmentTypes?.map(type => (
                 <option key={type} value={type}>
-                  {type.replace('_', ' ')}
+                  {type.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())}
                 </option>
               ))}
             </select>
           </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Marque
             </label>
             <input
               type="text"
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               value={formData.marque}
               onChange={(e) => handleChange('marque', e.target.value)}
+              placeholder="Ex: Siemens, ABB, Schneider"
             />
           </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Modèle
             </label>
             <input
               type="text"
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               value={formData.modele}
               onChange={(e) => handleChange('modele', e.target.value)}
+              placeholder="Référence du modèle"
             />
           </div>
+        </div>
+      </div>
+
+      {/* Technical Information */}
+      <div className="bg-gray-50 p-4 rounded-lg">
+        <h4 className="text-md font-semibold text-gray-900 mb-4">Informations techniques</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Coût
+              État de réception
+            </label>
+            <select
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={formData.etatDeReception}
+              onChange={(e) => handleChange('etatDeReception', e.target.value)}
+            >
+              <option value="">Sélectionner l'état</option>
+              <option value="Neuf">Neuf</option>
+              <option value="Bon_état">Bon état</option>
+              <option value="État_moyen">État moyen</option>
+              <option value="Mauvais_état">Mauvais état</option>
+              <option value="Hors_service">Hors service</option>
+              <option value="En_réparation">En réparation</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Valeur / Spécifications
+            </label>
+            <input
+              type="text"
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={formData.valeur}
+              onChange={(e) => handleChange('valeur', e.target.value)}
+              placeholder="Ex: 220V, 50Hz, 15kW"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Coût (MAD)
             </label>
             <input
               type="number"
               step="0.01"
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              min="0"
+              className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                errors.cout ? 'border-red-300' : 'border-gray-300'
+              }`}
               value={formData.cout}
               onChange={(e) => handleChange('cout', e.target.value)}
+              placeholder="Prix d'achat ou valeur"
             />
+            {errors.cout && (
+              <p className="text-red-500 text-sm mt-1">{errors.cout}</p>
+            )}
           </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Propriétaire *
             </label>
             <select
               required
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                errors.proprietaire_id ? 'border-red-300' : 'border-gray-300'
+              }`}
               value={formData.proprietaire_id}
               onChange={(e) => handleChange('proprietaire_id', e.target.value)}
             >
@@ -426,144 +726,222 @@ const Dashboard = () => {
                 </option>
               ))}
             </select>
+            {errors.proprietaire_id && (
+              <p className="text-red-500 text-sm mt-1">{errors.proprietaire_id}</p>
+            )}
           </div>
         </div>
-        
-        <div className="flex justify-end space-x-2 pt-4">
-          <button
-            type="button"
-            onClick={closeModal}
-            className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-          >
-            Annuler
-          </button>
-          <button
-            type="submit"
-            disabled={loading}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center space-x-2"
-          >
-            {loading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
-            <span>{equipment ? 'Modifier' : 'Créer'}</span>
-          </button>
-        </div>
-      </form>
-    );
+      </div>
+      
+      <div className="flex justify-end space-x-2 pt-4">
+        <button
+          type="button"
+          onClick={closeModal}
+          disabled={loading}
+          className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+        >
+          Annuler
+        </button>
+        <button
+          type="submit"
+          disabled={loading}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center space-x-2"
+        >
+          {loading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
+          <span>{equipment ? 'Modifier' : 'Créer'}</span>
+        </button>
+      </div>
+    </form>
+  );
+};
+
+const InterventionForm = ({ intervention, onSubmit, loading }) => {
+  const [formData, setFormData] = useState({
+    equipement_id: intervention?.equipement_id || '',
+    date: intervention?.date || new Date().toISOString().split('T')[0],
+    description: intervention?.description || '',
+    urgence: intervention?.urgence || false,
+    statut: intervention?.statut || 'PLANIFIEE'
+  });
+
+  const [errors, setErrors] = useState({});
+
+  const validateForm = () => {
+    const newErrors = {};
+
+    if (!formData.equipement_id) {
+      newErrors.equipement_id = 'L\'équipement est requis';
+    }
+
+    if (!formData.date) {
+      newErrors.date = 'La date est requise';
+    }
+
+    // Check if date is not in the past (except for today)
+    const selectedDate = new Date(formData.date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    if (selectedDate < today) {
+      newErrors.date = 'La date ne peut pas être antérieure à aujourd\'hui';
+    }
+
+    if (formData.description && formData.description.length > 1000) {
+      newErrors.description = 'La description ne peut pas dépasser 1000 caractères';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
-  const InterventionForm = ({ intervention, onSubmit, loading }) => {
-    const [formData, setFormData] = useState({
-      equipement_id: intervention?.equipement_id || '',
-      date: intervention?.date || new Date().toISOString().split('T')[0],
-      description: intervention?.description || '',
-      urgence: intervention?.urgence || false,
-      statut: intervention?.statut || 'PLANIFIEE'
-    });
-
-    const handleSubmit = (e) => {
-      e.preventDefault();
-      onSubmit(formData);
-    };
-
-    const handleChange = (field, value) => {
-      setFormData(prev => ({ ...prev, [field]: value }));
-    };
-
-    return (
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Équipement *
-          </label>
-          <select
-            required
-            className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-            value={formData.equipement_id}
-            onChange={(e) => handleChange('equipement_id', e.target.value)}
-          >
-            <option value="">Sélectionner un équipement</option>
-            {equipmentQuery.data?.data?.map(eq => (
-              <option key={eq.id} value={eq.id}>
-                {eq.nom} - {eq.proprietaire?.nom_entreprise}
-              </option>
-            ))}
-          </select>
-        </div>
-        
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Date *
-          </label>
-          <input
-            type="date"
-            required
-            className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-            value={formData.date}
-            onChange={(e) => handleChange('date', e.target.value)}
-          />
-        </div>
-        
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Description
-          </label>
-          <textarea
-            rows={3}
-            className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-            value={formData.description}
-            onChange={(e) => handleChange('description', e.target.value)}
-            placeholder="Décrivez l'intervention..."
-          />
-        </div>
-        
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Statut
-          </label>
-          <select
-            className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-            value={formData.statut}
-            onChange={(e) => handleChange('statut', e.target.value)}
-          >
-            <option value="PLANIFIEE">Planifiée</option>
-            <option value="EN_ATTENTE_PDR">En Attente PDR</option>
-            <option value="EN_COURS">En Cours</option>
-            <option value="TERMINEE">Terminée</option>
-          </select>
-        </div>
-        
-        <div className="flex items-center">
-          <input
-            type="checkbox"
-            id="urgence"
-            className="mr-2"
-            checked={formData.urgence}
-            onChange={(e) => handleChange('urgence', e.target.checked)}
-          />
-          <label htmlFor="urgence" className="text-sm font-medium text-gray-700">
-            Intervention urgente
-          </label>
-        </div>
-        
-        <div className="flex justify-end space-x-2 pt-4">
-          <button
-            type="button"
-            onClick={closeModal}
-            className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-          >
-            Annuler
-          </button>
-          <button
-            type="submit"
-            disabled={loading}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center space-x-2"
-          >
-            {loading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
-            <span>{intervention ? 'Modifier' : 'Créer'}</span>
-          </button>
-        </div>
-      </form>
-    );
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (validateForm()) {
+      const processedData = {
+        ...formData,
+        equipement_id: parseInt(formData.equipement_id)
+      };
+      onSubmit(processedData);
+    }
   };
+
+  const handleChange = (field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    // Clear error when user starts typing
+    if (errors[field]) {
+      setErrors(prev => ({ ...prev, [field]: '' }));
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Basic Information */}
+      <div className="bg-gray-50 p-4 rounded-lg">
+        <h4 className="text-md font-semibold text-gray-900 mb-4">Informations de l'intervention</h4>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Équipement *
+            </label>
+            <select
+              required
+              className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                errors.equipement_id ? 'border-red-300' : 'border-gray-300'
+              }`}
+              value={formData.equipement_id}
+              onChange={(e) => handleChange('equipement_id', e.target.value)}
+            >
+              <option value="">Sélectionner un équipement</option>
+              {equipmentQuery.data?.data?.map(eq => (
+                <option key={eq.id} value={eq.id}>
+                  {eq.nom} - {eq.proprietaire?.nom_entreprise}
+                </option>
+              ))}
+            </select>
+            {errors.equipement_id && (
+              <p className="text-red-500 text-sm mt-1">{errors.equipement_id}</p>
+            )}
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Date d'intervention *
+              </label>
+              <input
+                type="date"
+                required
+                className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                  errors.date ? 'border-red-300' : 'border-gray-300'
+                }`}
+                value={formData.date}
+                onChange={(e) => handleChange('date', e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+              />
+              {errors.date && (
+                <p className="text-red-500 text-sm mt-1">{errors.date}</p>
+              )}
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Statut initial
+              </label>
+              <select
+                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                value={formData.statut}
+                onChange={(e) => handleChange('statut', e.target.value)}
+              >
+                <option value="PLANIFIEE">Planifiée</option>
+                <option value="EN_ATTENTE_PDR">En Attente PDR</option>
+                <option value="EN_COURS">En Cours</option>
+              </select>
+            </div>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Description de l'intervention
+            </label>
+            <textarea
+              rows={4}
+              className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 resize-none ${
+                errors.description ? 'border-red-300' : 'border-gray-300'
+              }`}
+              value={formData.description}
+              onChange={(e) => handleChange('description', e.target.value)}
+              placeholder="Décrivez le problème ou l'intervention nécessaire..."
+              maxLength={1000}
+            />
+            <div className="flex justify-between mt-1">
+              {errors.description && (
+                <p className="text-red-500 text-sm">{errors.description}</p>
+              )}
+              <p className="text-gray-500 text-sm ml-auto">
+                {formData.description.length}/1000
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="urgence"
+              className="mr-3 h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300 rounded"
+              checked={formData.urgence}
+              onChange={(e) => handleChange('urgence', e.target.checked)}
+            />
+            <label htmlFor="urgence" className="text-sm font-medium text-gray-700">
+              <span className="flex items-center">
+                Intervention urgente
+                <span className="ml-2 text-red-600">⚠️</span>
+              </span>
+            </label>
+          </div>
+        </div>
+      </div>
+      
+      <div className="flex justify-end space-x-2 pt-4">
+        <button
+          type="button"
+          onClick={closeModal}
+          disabled={loading}
+          className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+        >
+          Annuler
+        </button>
+        <button
+          type="submit"
+          disabled={loading}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center space-x-2"
+        >
+          {loading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
+          <span>{intervention ? 'Modifier' : 'Créer'}</span>
+        </button>
+      </div>
+    </form>
+  );
+};
 
   // Tab content renderers
   const renderOverview = () => (
