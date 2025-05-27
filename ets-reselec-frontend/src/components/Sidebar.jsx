@@ -149,23 +149,24 @@ const Sidebar = ({ isOpen, isCollapsed, onClose, onToggleCollapse }) => {
       </div>
       
       {/* User info */}
-      {!isCollapsed && (
-        <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-primary-600 rounded-full flex items-center justify-center text-white font-medium text-sm">
-              {user?.nom ? user.nom.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'U'}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">
-                {user?.nom || 'Utilisateur'}
-              </p>
-              <p className="text-xs text-gray-500 truncate">
-                {user?.role || 'Rôle non défini'}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+{!isCollapsed && (
+  <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
+    <div className="flex items-center space-x-3">
+      <div className="w-10 h-10 bg-primary-600 rounded-full flex items-center justify-center text-white font-medium text-sm">
+        {user?.nom ? user.nom.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'U'}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-gray-900 truncate">
+          {user?.nom || 'Utilisateur'}
+        </p>
+        {/* Fix: Handle role being an object */}
+        <p className="text-xs text-gray-500 truncate">
+          {typeof user?.role === 'object' ? user.role?.nom : user?.role || 'Rôle non défini'}
+        </p>
+      </div>
+    </div>
+  </div>
+)}
       
       {/* Navigation */}
       <nav className="flex-1 px-4 py-4 space-y-2 overflow-y-auto">

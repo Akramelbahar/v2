@@ -1,3 +1,4 @@
+// ets-reselec-frontend/src/context/AuthContext.jsx
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import authService from '../services/authService';
 import toast from 'react-hot-toast';
@@ -137,7 +138,7 @@ export const AuthProvider = ({ children }) => {
         payload: { user, token }
       });
       
-      toast.success(`Welcome back, ${user.nom}!`);
+      toast.success(`Bienvenue, ${user.nom}!`);
       return { success: true };
       
     } catch (error) {
@@ -164,7 +165,7 @@ export const AuthProvider = ({ children }) => {
         payload: { user, token }
       });
       
-      toast.success(`Welcome to ETS RESELEC, ${user.nom}!`);
+      toast.success(`Bienvenue à ETS RESELEC, ${user.nom}!`);
       return { success: true };
       
     } catch (error) {
@@ -186,74 +187,12 @@ export const AuthProvider = ({ children }) => {
       
       dispatch({ type: AUTH_ACTIONS.LOGOUT });
       
-      toast.success('Logged out successfully');
+      toast.success('Déconnexion réussie');
       
     } catch (error) {
       console.error('Logout error:', error);
       // Still logout locally even if API call fails
       dispatch({ type: AUTH_ACTIONS.LOGOUT });
-    }
-  };
-  
-  // Update profile function
-  const updateProfile = async (profileData) => {
-    try {
-      const updatedUser = await authService.updateProfile(profileData);
-      
-      dispatch({
-        type: AUTH_ACTIONS.UPDATE_USER,
-        payload: updatedUser
-      });
-      
-      return { success: true };
-      
-    } catch (error) {
-      const errorMessage = error.response?.data?.message || error.message || 'Profile update failed';
-      
-      dispatch({
-        type: AUTH_ACTIONS.AUTH_FAILURE,
-        payload: errorMessage
-      });
-      
-      return { success: false, error: errorMessage };
-    }
-  };
-  
-  // Change password function
-  const changePassword = async (passwordData) => {
-    try {
-      await authService.changePassword(passwordData);
-      
-      toast.success('Password changed successfully');
-      return { success: true };
-      
-    } catch (error) {
-      const errorMessage = error.response?.data?.message || error.message || 'Password change failed';
-      
-      dispatch({
-        type: AUTH_ACTIONS.AUTH_FAILURE,
-        payload: errorMessage
-      });
-      
-      return { success: false, error: errorMessage };
-    }
-  };
-  
-  // Refresh profile function
-  const refreshProfile = async () => {
-    try {
-      const user = await authService.getProfile();
-      
-      dispatch({
-        type: AUTH_ACTIONS.UPDATE_USER,
-        payload: user
-      });
-      
-      return { success: true };
-      
-    } catch (error) {
-      console.error('Profile refresh error:', error);
-      return { success: false, error: error.message };
     }
   };
   
@@ -264,25 +203,20 @@ export const AuthProvider = ({ children }) => {
   
   // Permission and role checking functions
   const hasPermission = (permission) => {
-    return authService.hasPermission(permission);
+    if (!state.user) return false;
+    
+    // Admin has all permissions
+    if (state.user.role === 'Administrateur') return true;
+    
+    return state.user.permissions?.includes(permission) || false;
   };
   
   const hasRole = (role) => {
-    return authService.hasRole(role);
+    return state.user?.role === role;
   };
   
-  const getPermissions = () => {
-    return authService.getPermissions();
-  };
-  
-  // Check if user is admin
   const isAdmin = () => {
-    return hasRole('Admin') || hasRole('Administrateur');
-  };
-  
-  // Check if user is technician
-  const isTechnician = () => {
-    return hasRole('Technician') || hasRole('Technicien') || hasRole('Technicien Senior') || hasRole('Technicien Junior');
+    return hasRole('Administrateur') || hasRole('Admin');
   };
   
   // Context value
@@ -298,17 +232,12 @@ export const AuthProvider = ({ children }) => {
     login,
     register,
     logout,
-    updateProfile,
-    changePassword,
-    refreshProfile,
     clearError,
     
     // Authorization
     hasPermission,
     hasRole,
-    getPermissions,
-    isAdmin,
-    isTechnician
+    isAdmin
   };
   
   return (

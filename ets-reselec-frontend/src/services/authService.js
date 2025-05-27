@@ -1,6 +1,20 @@
 import api, { tokenStorage } from './api';
+// Fix in ets-reselec-frontend/src/services/authService.js
 
 class AuthService {
+  // Normalize user data to handle role objects
+  _normalizeUserData(user) {
+    if (!user) return null;
+    
+    return {
+      ...user,
+      // If role is an object, extract the name; otherwise keep as is
+      role: typeof user.role === 'object' ? user.role?.nom || user.role?.name : user.role,
+      // Ensure permissions is always an array
+      permissions: Array.isArray(user.permissions) ? user.permissions : []
+    };
+  }
+
   // Login user
   async login(credentials) {
     try {
@@ -9,13 +23,16 @@ class AuthService {
       if (response.data.success && response.data.data.token) {
         const { token, user } = response.data.data;
         
+        // Normalize user data
+        const normalizedUser = this._normalizeUserData(user);
+        
         // Store tokens
         tokenStorage.set(token);
         
         // Store user data
-        localStorage.setItem('user_data', JSON.stringify(user));
+        localStorage.setItem('user_data', JSON.stringify(normalizedUser));
         
-        return { user, token };
+        return { user: normalizedUser, token };
       }
       
       throw new Error(response.data.message || 'Login failed');
@@ -33,33 +50,22 @@ class AuthService {
       if (response.data.success && response.data.data.token) {
         const { token, user } = response.data.data;
         
+        // Normalize user data
+        const normalizedUser = this._normalizeUserData(user);
+        
         // Store tokens
         tokenStorage.set(token);
         
         // Store user data
-        localStorage.setItem('user_data', JSON.stringify(user));
+        localStorage.setItem('user_data', JSON.stringify(normalizedUser));
         
-        return { user, token };
+        return { user: normalizedUser, token };
       }
       
       throw new Error(response.data.message || 'Registration failed');
     } catch (error) {
       console.error('Registration error:', error);
       throw error;
-    }
-  }
-  
-  // Logout user
-  async logout() {
-    try {
-      // Call logout endpoint
-      await api.post('/auth/logout');
-    } catch (error) {
-      console.error('Logout API error:', error);
-      // Continue with local logout even if API call fails
-    } finally {
-      // Clear local storage
-      tokenStorage.clear();
     }
   }
   
@@ -71,10 +77,13 @@ class AuthService {
       if (response.data.success) {
         const user = response.data.data;
         
-        // Update stored user data
-        localStorage.setItem('user_data', JSON.stringify(user));
+        // Normalize user data
+        const normalizedUser = this._normalizeUserData(user);
         
-        return user;
+        // Update stored user data
+        localStorage.setItem('user_data', JSON.stringify(normalizedUser));
+        
+        return normalizedUser;
       }
       
       throw new Error('Failed to fetch profile');
@@ -92,10 +101,13 @@ class AuthService {
       if (response.data.success) {
         const user = response.data.data;
         
-        // Update stored user data
-        localStorage.setItem('user_data', JSON.stringify(user));
+        // Normalize user data
+        const normalizedUser = this._normalizeUserData(user);
         
-        return user;
+        // Update stored user data
+        localStorage.setItem('user_data', JSON.stringify(normalizedUser));
+        
+        return normalizedUser;
       }
       
       throw new Error(response.data.message || 'Profile update failed');
@@ -105,7 +117,56 @@ class AuthService {
     }
   }
   
-  // Change password
+  // Get current user from localStorage
+  getCurrentUser() {
+    try {
+      const userData = localStorage.getItem('user_data');
+      const user = userData ? JSON.parse(userData) : null;
+      return this._normalizeUserData(user);
+    } catch (error) {
+      console.error('Error parsing user data:', error);
+      return null;
+    }
+  }
+  
+  // Initialize auth state from localStorage
+  initializeAuth() {
+    const token = tokenStorage.get();
+    const userData = localStorage.getItem('user_data');
+    
+    if (token && userData && !this.isTokenExpired()) {
+      try {
+        const user = JSON.parse(userData);
+        return {
+          isAuthenticated: true,
+          user: this._normalizeUserData(user),
+          token
+        };
+      } catch (error) {
+        console.error('Error initializing auth:', error);
+        this.logout();
+      }
+    }
+    
+    return {
+      isAuthenticated: false,
+      user: null,
+      token: null
+    };
+  }
+
+  // ... rest of the methods remain the same
+  
+  async logout() {
+    try {
+      await api.post('/auth/logout');
+    } catch (error) {
+      console.error('Logout API error:', error);
+    } finally {
+      tokenStorage.clear();
+    }
+  }
+  
   async changePassword(passwordData) {
     try {
       const response = await api.put('/auth/profile', passwordData);
@@ -121,7 +182,6 @@ class AuthService {
     }
   }
   
-  // Refresh token
   async refreshToken() {
     try {
       const currentToken = tokenStorage.get();
@@ -147,26 +207,12 @@ class AuthService {
     }
   }
   
-  // Check if user is authenticated
   isAuthenticated() {
     const token = tokenStorage.get();
     const userData = localStorage.getItem('user_data');
-    
     return !!(token && userData);
   }
   
-  // Get current user from localStorage
-  getCurrentUser() {
-    try {
-      const userData = localStorage.getItem('user_data');
-      return userData ? JSON.parse(userData) : null;
-    } catch (error) {
-      console.error('Error parsing user data:', error);
-      return null;
-    }
-  }
-  
-  // Check if user has specific permission
   hasPermission(permission) {
     const user = this.getCurrentUser();
     
@@ -174,28 +220,23 @@ class AuthService {
       return false;
     }
     
-    // Admin has all permissions
-    if (user.role === 'Admin' || user.role === 'Administrateur') {
+    if (user.role === 'Administrateur') {
       return true;
     }
     
-    // Check specific permission
     return user.permissions.includes(permission);
   }
   
-  // Check if user has specific role
   hasRole(role) {
     const user = this.getCurrentUser();
     return user && user.role === role;
   }
   
-  // Get user permissions
   getPermissions() {
     const user = this.getCurrentUser();
     return user ? user.permissions || [] : [];
   }
   
-  // Validate token expiry (basic check)
   isTokenExpired() {
     const token = tokenStorage.get();
     
@@ -204,7 +245,6 @@ class AuthService {
     }
     
     try {
-      // Decode JWT token to check expiry
       const payload = JSON.parse(atob(token.split('.')[1]));
       const currentTime = Date.now() / 1000;
       
@@ -214,33 +254,7 @@ class AuthService {
       return true;
     }
   }
-  
-  // Initialize auth state from localStorage
-  initializeAuth() {
-    const token = tokenStorage.get();
-    const userData = localStorage.getItem('user_data');
-    
-    if (token && userData && !this.isTokenExpired()) {
-      try {
-        return {
-          isAuthenticated: true,
-          user: JSON.parse(userData),
-          token
-        };
-      } catch (error) {
-        console.error('Error initializing auth:', error);
-        this.logout();
-      }
-    }
-    
-    return {
-      isAuthenticated: false,
-      user: null,
-      token: null
-    };
-  }
 }
 
-// Create and export a singleton instance
 const authService = new AuthService();
 export default authService;

@@ -230,61 +230,67 @@ const Header = ({ onMenuClick, sidebarCollapsed, onToggleSidebar }) => {
             </div>
 
             {/* User menu */}
-            <div className="relative" ref={userMenuRef}>
-              <button
-                onClick={() => setShowUserMenu(!showUserMenu)}
-                className="flex items-center space-x-3 p-2 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
-              >
-                <div className="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center text-white font-medium text-sm">
-                  {user ? getUserInitials(user.nom) : 'U'}
-                </div>
-                <div className="hidden md:block text-left">
-                  <p className="text-sm font-medium text-gray-900">{user?.nom || 'Utilisateur'}</p>
-                  <p className="text-xs text-gray-500">{user?.role || 'Role'}</p>
-                </div>
-              </button>
-              
-              {/* User dropdown menu */}
-              {showUserMenu && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-medium border border-gray-200 z-50">
-                  <div className="p-4 border-b border-gray-200">
-                    <p className="text-sm font-medium text-gray-900">{user?.nom}</p>
-                    <p className="text-xs text-gray-500">{user?.username}</p>
-                    <p className="text-xs text-primary-600">{user?.role}</p>
-                  </div>
-                  
-                  <div className="py-2">
-                    <Link
-                      to="/profile"
-                      className="flex items-center space-x-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                      onClick={() => setShowUserMenu(false)}
-                    >
-                      <User className="w-4 h-4" />
-                      <span>Mon profil</span>
-                    </Link>
-                    
-                    <Link
-                      to="/settings"
-                      className="flex items-center space-x-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                      onClick={() => setShowUserMenu(false)}
-                    >
-                      <Settings className="w-4 h-4" />
-                      <span>Paramètres</span>
-                    </Link>
-                  </div>
-                  
-                  <div className="py-2 border-t border-gray-200">
-                    <button
-                      onClick={handleLogout}
-                      className="flex items-center space-x-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors w-full text-left"
-                    >
-                      <LogOut className="w-4 h-4" />
-                      <span>Se déconnecter</span>
-                    </button>
-                  </div>
-                </div>
-              )}
+                    <div className="relative" ref={userMenuRef}>
+          <button
+            onClick={() => setShowUserMenu(!showUserMenu)}
+            className="flex items-center space-x-3 p-2 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+          >
+            <div className="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center text-white font-medium text-sm">
+              {user ? getUserInitials(user.nom) : 'U'}
             </div>
+            <div className="hidden md:block text-left">
+              <p className="text-sm font-medium text-gray-900">{user?.nom || 'Utilisateur'}</p>
+              {/* Fix: Handle role being an object */}
+              <p className="text-xs text-gray-500">
+                {typeof user?.role === 'object' ? user.role?.nom : user?.role || 'Role'}
+              </p>
+            </div>
+          </button>
+          
+          {/* User dropdown menu */}
+          {showUserMenu && (
+            <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-medium border border-gray-200 z-50">
+              <div className="p-4 border-b border-gray-200">
+                <p className="text-sm font-medium text-gray-900">{user?.nom}</p>
+                <p className="text-xs text-gray-500">{user?.username}</p>
+                {/* Fix: Handle role being an object */}
+                <p className="text-xs text-primary-600">
+                  {typeof user?.role === 'object' ? user.role?.nom : user?.role || 'Role'}
+                </p>
+              </div>
+              
+              <div className="py-2">
+                <Link
+                  to="/profile"
+                  className="flex items-center space-x-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                  onClick={() => setShowUserMenu(false)}
+                >
+                  <User className="w-4 h-4" />
+                  <span>Mon profil</span>
+                </Link>
+                
+                <Link
+                  to="/settings"
+                  className="flex items-center space-x-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                  onClick={() => setShowUserMenu(false)}
+                >
+                  <Settings className="w-4 h-4" />
+                  <span>Paramètres</span>
+                </Link>
+              </div>
+              
+              <div className="py-2 border-t border-gray-200">
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center space-x-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors w-full text-left"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Se déconnecter</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
           </div>
         </div>
       </div>
