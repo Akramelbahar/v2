@@ -13,6 +13,12 @@ const equipmentRoutes = require('./routes/equipment');
 const interventionRoutes = require('./routes/interventions');
 const dashboardRoutes = require('./routes/dashboard');
 
+const roleRoutes = require('./routes/roles');
+const userRoutes = require('./routes/users');
+
+// Add these lines after existing route usage:
+
+
 const app = express();
 
 // Security middleware
@@ -57,7 +63,8 @@ app.get('/api/health', (req, res) => {
     environment: process.env.NODE_ENV || 'development'
   });
 });
-
+app.use('/api/roles', roleRoutes);
+app.use('/api/users', userRoutes);
 // API documentation endpoint
 app.get('/api/docs', (req, res) => {
   res.json({
