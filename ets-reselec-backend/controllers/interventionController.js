@@ -108,6 +108,7 @@ const getAllInterventions = async (req, res) => {
 };
 
 // GET /api/interventions/:id
+// GET /api/interventions/:id
 const getInterventionById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -150,6 +151,46 @@ const getInterventionById = async (req, res) => {
 
     if (!intervention) {
       return sendError(res, 'Intervention not found', 404);
+    }
+
+    // If diagnostic exists, fetch the related data from junction tables
+    if (intervention.diagnostic) {
+      try {
+        // Fetch travailRequis
+        const travailRequis = await sequelize.query(
+          'SELECT travail FROM Diagnostic_travailRequis WHERE diagnostic_id = ?',
+          { 
+            replacements: [intervention.diagnostic.id],
+            type: sequelize.QueryTypes.SELECT 
+          }
+        );
+
+        // Fetch besoinPDR
+        const besoinPDR = await sequelize.query(
+          'SELECT besoin FROM Diagnostic_besoinPDR WHERE diagnostic_id = ?',
+          { 
+            replacements: [intervention.diagnostic.id],
+            type: sequelize.QueryTypes.SELECT 
+          }
+        );
+
+        // Fetch chargesRealisees
+        const chargesRealisees = await sequelize.query(
+          'SELECT charge FROM Diagnostic_chargesRealisees WHERE diagnostic_id = ?',
+          { 
+            replacements: [intervention.diagnostic.id],
+            type: sequelize.QueryTypes.SELECT 
+          }
+        );
+
+        // Add the arrays to diagnostic data
+        intervention.diagnostic.dataValues.travailRequis = travailRequis.map(t => t.travail);
+        intervention.diagnostic.dataValues.besoinPDR = besoinPDR.map(b => b.besoin);
+        intervention.diagnostic.dataValues.chargesRealisees = chargesRealisees.map(c => c.charge);
+      } catch (diagError) {
+        console.error('Error fetching diagnostic details:', diagError);
+        // Don't fail the whole request, just log the error
+      }
     }
 
     sendSuccess(res, intervention);
@@ -515,24 +556,16 @@ const updateInterventionStatus = async (req, res) => {
 };
 
 // GET /api/interventions/:id/workflow
+// GET /api/interventions/:id/workflow
 const getWorkflowStatus = async (req, res) => {
   try {
     const { id } = req.params;
 
     const intervention = await Intervention.findByPk(id, {
       include: [
-        { 
-          model: Diagnostic, 
-          as: 'diagnostic' 
-        },
-        { 
-          model: Planification, 
-          as: 'planification' 
-        },
-        { 
-          model: ControleQualite, 
-          as: 'controleQualite' 
-        }
+        { model: Diagnostic, as: 'diagnostic' },
+        { model: Planification, as: 'planification' },
+        { model: ControleQualite, as: 'controleQualite' }
       ]
     });
 
@@ -540,10 +573,34 @@ const getWorkflowStatus = async (req, res) => {
       return sendError(res, 'Intervention not found', 404);
     }
 
-    // Get diagnostic with arrays if it exists
-    let diagnosticWithArrays = null;
-    if (intervention.diagnostic) {
-      diagnosticWithArrays = await getDiagnosticWithArrays(intervention.diagnostic.id);
+    // Fetch diagnostic arrays if diagnostic exists
+    let diagnosticData = intervention.diagnostic;
+    if (diagnosticData) {
+      try {
+        const [travailRequis, besoinPDR, chargesRealisees] = await Promise.all([
+          sequelize.query(
+            'SELECT travail FROM Diagnostic_travailRequis WHERE diagnostic_id = ?',
+            { replacements: [diagnosticData.id], type: sequelize.QueryTypes.SELECT }
+          ),
+          sequelize.query(
+            'SELECT besoin FROM Diagnostic_besoinPDR WHERE diagnostic_id = ?',
+            { replacements: [diagnosticData.id], type: sequelize.QueryTypes.SELECT }
+          ),
+          sequelize.query(
+            'SELECT charge FROM Diagnostic_chargesRealisees WHERE diagnostic_id = ?',
+            { replacements: [diagnosticData.id], type: sequelize.QueryTypes.SELECT }
+          )
+        ]);
+
+        diagnosticData = {
+          ...diagnosticData.toJSON(),
+          travailRequis: travailRequis.map(t => t.travail),
+          besoinPDR: besoinPDR.map(b => b.besoin),
+          chargesRealisees: chargesRealisees.map(c => c.charge)
+        };
+      } catch (diagError) {
+        console.error('Error fetching diagnostic arrays:', diagError);
+      }
     }
 
     const workflow = {
@@ -551,39 +608,25 @@ const getWorkflowStatus = async (req, res) => {
         id: intervention.id,
         statut: intervention.statut,
         date: intervention.date,
-        urgence: intervention.urgence,
-        diagnostic: diagnosticWithArrays,
-        planification: intervention.planification,
-        controleQualite: intervention.controleQualite
+        urgence: intervention.urgence
       },
       phases: {
         diagnostic: {
-          completed: !!intervention.diagnostic && (
-            (diagnosticWithArrays?.travailRequis?.length > 0) ||
-            (diagnosticWithArrays?.besoinPDR?.length > 0) ||
-            (diagnosticWithArrays?.chargesRealisees?.length > 0)
-          ),
-          dateCreation: intervention.diagnostic?.dateCreation
+          completed: !!intervention.diagnostic,
+          dateCreation: intervention.diagnostic?.dateCreation,
+          data: diagnosticData
         },
         planification: {
-          completed: !!intervention.planification && (
-            intervention.planification.capaciteExecution !== null ||
-            intervention.planification.urgencePrise ||
-            intervention.planification.disponibilitePDR
-          ),
+          completed: !!intervention.planification,
           dateCreation: intervention.planification?.dateCreation,
           disponibilitePDR: intervention.planification?.disponibilitePDR
         },
         controleQualite: {
-          completed: !!intervention.controleQualite && (
-            (intervention.controleQualite.resultatsEssais && intervention.controleQualite.resultatsEssais.trim()) ||
-            (intervention.controleQualite.analyseVibratoire && intervention.controleQualite.analyseVibratoire.trim())
-          ),
+          completed: !!intervention.controleQualite,
           dateControle: intervention.controleQualite?.dateControle
         }
       },
-      nextActions: getNextActions(intervention),
-      validStatusTransitions: VALID_STATUS_TRANSITIONS[intervention.statut] || []
+      nextActions: getNextActions(intervention)
     };
 
     sendSuccess(res, workflow);
