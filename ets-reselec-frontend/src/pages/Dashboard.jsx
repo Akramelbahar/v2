@@ -40,12 +40,12 @@ import {
   useInterventions,
   useCreateIntervention,
   useUpdateInterventionStatus,
-  useInterventionWorkflow
+  useInterventionWorkflow,
+  useUpdateIntervention // Add this line here at the top
 } from '../hooks/useInterventions';
 
 import { formatDate, formatDateTime, formatDateTimeShort, isToday, isThisWeek } from '../utils/dateUtils';
 import { formatCurrency, formatNumber, truncateText } from '../utils/formatUtils';
-
 const StatCard = ({ title, value, icon: Icon, color, trend, loading = false }) => (
   <div className="bg-white rounded-lg shadow-sm border p-6 hover:shadow-md transition-shadow">
     {loading ? (
@@ -636,6 +636,9 @@ const allEquipment = allEquipmentQuery.data?.data || allEquipmentQuery.data || [
       statut: intervention?.statut || 'PLANIFIEE'
     });
   
+    // Get equipment data for the dropdown
+    const { data: equipmentData } = useEquipment({ limit: 1000 }); // Get all equipment
+  
     const handleSubmit = (e) => {
       e.preventDefault();
       onSubmit(formData);
@@ -658,10 +661,9 @@ const allEquipment = allEquipmentQuery.data?.data || allEquipmentQuery.data || [
             onChange={(e) => handleChange('equipement_id', e.target.value)}
           >
             <option value="">Sélectionner un équipement</option>
-            {/* FIX: Use allEquipment data with proper access */}
-            {(allEquipment?.data || allEquipment)?.map(eq => (
+            {equipmentData?.data?.map(eq => (
               <option key={eq.id} value={eq.id}>
-                {eq.nom} - {eq.proprietaire?.nom_entreprise || 'Client non défini'}
+                {eq.nom} - {eq.proprietaire?.nom_entreprise}
               </option>
             ))}
           </select>
@@ -1840,6 +1842,16 @@ const allEquipment = allEquipmentQuery.data?.data || allEquipmentQuery.data || [
               label: 'Modifier',
               onClick: (row) => openModal('intervention', row),
               className: 'text-yellow-600 hover:text-yellow-800'
+            }] : []),
+            ...(hasPermission('interventions:update') ? [{
+              icon: Play,
+              label: 'Changer Statut',
+              onClick: (row) => {
+                const newStatus = row.statut === 'PLANIFIEE' ? 'EN_COURS' : 
+                                 row.statut === 'EN_COURS' ? 'TERMINEE' : 'PLANIFIEE';
+                updateStatusMutation.mutate({ id: row.id, status: newStatus });
+              },
+              className: 'text-green-600 hover:text-green-800'
             }] : [])
           ] : null}
           pagination={
@@ -1930,29 +1942,25 @@ const allEquipment = allEquipmentQuery.data?.data || allEquipmentQuery.data || [
              content: <EquipmentDetailModal equipment={selectedItem} />
            },
            intervention: {
-             title: selectedItem ? 'Modifier l\'Intervention' : 'Nouvelle Intervention',
-             size: 'lg',
-             content: (
-               <InterventionForm
-                 intervention={selectedItem}
-                 onSubmit={async (data) => {
-                   try {
-                     if (selectedItem && selectedItem.id) {
-                       // For updates, we might need different endpoint
-                       console.log('Update intervention:', data);
-                       // TODO: Implement intervention update
-                     } else {
-                       await createInterventionMutation.mutateAsync(data);
-                     }
-                     closeModal();
-                   } catch (error) {
-                     console.error('Intervention form error:', error);
-                   }
-                 }}
-                 loading={createInterventionMutation.isPending}
-               />
-             )
-           },
+            title: selectedItem ? 'Modifier l\'Intervention' : 'Nouvelle Intervention',
+            size: 'md',
+            content: (
+              <InterventionForm
+                intervention={selectedItem}
+                onSubmit={(data) => {
+                  if (selectedItem) {
+                    // For updates, we'll use the status update mutation for now
+                    // You can extend this to have a full update mutation later
+                    updateStatusMutation.mutate({ id: selectedItem.id, status: data.statut });
+                    closeModal();
+                  } else {
+                    createInterventionMutation.mutate(data);
+                  }
+                }}
+                loading={createInterventionMutation.isPending || updateStatusMutation.isPending}
+              />
+            )
+          },
            'intervention-detail': {
              title: 'Détails de l\'Intervention',
              size: 'xl',

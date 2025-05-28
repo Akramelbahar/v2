@@ -1,12 +1,25 @@
-import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { interventionService } from '../services/interventionService';
 import toast from 'react-hot-toast';
+import React from 'react';
 
 export const useInterventions = (params = {}) => {
   return useQuery({
     queryKey: ['interventions', params],
-    queryFn: () => interventionService.getAll(params).then(res => res.data.data || res.data),
+    queryFn: () => interventionService.getAll(params).then(res => {
+      // Handle the pagination response structure
+      if (res.data.pagination) {
+        return {
+          data: res.data.data,
+          total: res.data.pagination.total,
+          pages: res.data.pagination.pages,
+          page: res.data.pagination.page,
+          limit: res.data.pagination.limit
+        };
+      }
+      // Fallback for non-paginated responses
+      return res.data.data || res.data;
+    }),
     keepPreviousData: true,
     staleTime: 60000 // 1 minute - interventions change frequently
   });
@@ -61,17 +74,17 @@ export const useUpdateInterventionStatus = () => {
   });
 };
 
-export const useInterventionWorkflow = (id) => {
+export const useInterventionWorkflow = (id, options = {}) => {
   return useQuery({
     queryKey: ['intervention-workflow', id],
-    queryFn: () => interventionService.getWorkflow(id).then(res => res.data.data),
-    enabled: !!id,
-    staleTime: 30000, // 30 seconds
-    refetchInterval: false, // Don't auto-refetch
-    refetchOnWindowFocus: false
+    queryFn: () => interventionService.getWorkflow(id).then(res => {
+      console.log('Workflow API Response:', res.data);
+      return res.data.data; // Make sure we return the correct data structure
+    }),
+    enabled: !!id && (options.enabled !== false),
+    staleTime: 30000 // 30 seconds
   });
 };
-
 export const useUpdateDiagnostic = () => {
   const queryClient = useQueryClient();
   
@@ -135,7 +148,8 @@ export const useUpdateIntervention = () => {
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries(['interventions']);
       queryClient.invalidateQueries(['intervention', variables.id]);
-      queryClient.invalidateQueries(['intervention-workflow', variables.id]);
+      queryClient.invalidateQueries(['recent-interventions']);
+      queryClient.invalidateQueries(['dashboard-stats']);
       toast.success('Intervention modifiée avec succès');
     },
     onError: (error) => {

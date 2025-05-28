@@ -108,7 +108,6 @@ const getAllInterventions = async (req, res) => {
 };
 
 // GET /api/interventions/:id
-// GET /api/interventions/:id
 const getInterventionById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -153,54 +152,56 @@ const getInterventionById = async (req, res) => {
       return sendError(res, 'Intervention not found', 404);
     }
 
+    // Convert to plain object
+    const interventionData = intervention.toJSON();
+
     // If diagnostic exists, fetch the related data from junction tables
-    if (intervention.diagnostic) {
+    if (interventionData.diagnostic) {
       try {
-        // Fetch travailRequis
-        const travailRequis = await sequelize.query(
-          'SELECT travail FROM Diagnostic_travailRequis WHERE diagnostic_id = ?',
-          { 
-            replacements: [intervention.diagnostic.id],
-            type: sequelize.QueryTypes.SELECT 
-          }
-        );
-
-        // Fetch besoinPDR
-        const besoinPDR = await sequelize.query(
-          'SELECT besoin FROM Diagnostic_besoinPDR WHERE diagnostic_id = ?',
-          { 
-            replacements: [intervention.diagnostic.id],
-            type: sequelize.QueryTypes.SELECT 
-          }
-        );
-
-        // Fetch chargesRealisees
-        const chargesRealisees = await sequelize.query(
-          'SELECT charge FROM Diagnostic_chargesRealisees WHERE diagnostic_id = ?',
-          { 
-            replacements: [intervention.diagnostic.id],
-            type: sequelize.QueryTypes.SELECT 
-          }
-        );
+        const [travailRequis, besoinPDR, chargesRealisees] = await Promise.all([
+          sequelize.query(
+            'SELECT travail FROM Diagnostic_travailRequis WHERE diagnostic_id = ?',
+            { 
+              replacements: [interventionData.diagnostic.id],
+              type: sequelize.QueryTypes.SELECT 
+            }
+          ),
+          sequelize.query(
+            'SELECT besoin FROM Diagnostic_besoinPDR WHERE diagnostic_id = ?',
+            { 
+              replacements: [interventionData.diagnostic.id],
+              type: sequelize.QueryTypes.SELECT 
+            }
+          ),
+          sequelize.query(
+            'SELECT charge FROM Diagnostic_chargesRealisees WHERE diagnostic_id = ?',
+            { 
+              replacements: [interventionData.diagnostic.id],
+              type: sequelize.QueryTypes.SELECT 
+            }
+          )
+        ]);
 
         // Add the arrays to diagnostic data
-        intervention.diagnostic.dataValues.travailRequis = travailRequis.map(t => t.travail);
-        intervention.diagnostic.dataValues.besoinPDR = besoinPDR.map(b => b.besoin);
-        intervention.diagnostic.dataValues.chargesRealisees = chargesRealisees.map(c => c.charge);
+        interventionData.diagnostic.travailRequis = travailRequis.map(t => t.travail);
+        interventionData.diagnostic.besoinPDR = besoinPDR.map(b => b.besoin);
+        interventionData.diagnostic.chargesRealisees = chargesRealisees.map(c => c.charge);
       } catch (diagError) {
         console.error('Error fetching diagnostic details:', diagError);
-        // Don't fail the whole request, just log the error
+        // Set empty arrays as fallback
+        interventionData.diagnostic.travailRequis = [];
+        interventionData.diagnostic.besoinPDR = [];
+        interventionData.diagnostic.chargesRealisees = [];
       }
     }
 
-    sendSuccess(res, intervention);
+    sendSuccess(res, interventionData);
 
   } catch (error) {
     console.error('Get intervention by ID error:', error);
     sendError(res, 'Failed to retrieve intervention', 500, error.message);
   }
 };
-
 // POST /api/interventions
 const createIntervention = async (req, res) => {
   const transaction = await sequelize.transaction();
@@ -556,7 +557,6 @@ const updateInterventionStatus = async (req, res) => {
 };
 
 // GET /api/interventions/:id/workflow
-// GET /api/interventions/:id/workflow
 const getWorkflowStatus = async (req, res) => {
   try {
     const { id } = req.params;
@@ -574,35 +574,42 @@ const getWorkflowStatus = async (req, res) => {
     }
 
     // Fetch diagnostic arrays if diagnostic exists
-    let diagnosticData = intervention.diagnostic;
-    if (diagnosticData) {
+    let diagnosticData = null;
+    if (intervention.diagnostic) {
       try {
         const [travailRequis, besoinPDR, chargesRealisees] = await Promise.all([
           sequelize.query(
             'SELECT travail FROM Diagnostic_travailRequis WHERE diagnostic_id = ?',
-            { replacements: [diagnosticData.id], type: sequelize.QueryTypes.SELECT }
+            { replacements: [intervention.diagnostic.id], type: sequelize.QueryTypes.SELECT }
           ),
           sequelize.query(
             'SELECT besoin FROM Diagnostic_besoinPDR WHERE diagnostic_id = ?',
-            { replacements: [diagnosticData.id], type: sequelize.QueryTypes.SELECT }
+            { replacements: [intervention.diagnostic.id], type: sequelize.QueryTypes.SELECT }
           ),
           sequelize.query(
             'SELECT charge FROM Diagnostic_chargesRealisees WHERE diagnostic_id = ?',
-            { replacements: [diagnosticData.id], type: sequelize.QueryTypes.SELECT }
+            { replacements: [intervention.diagnostic.id], type: sequelize.QueryTypes.SELECT }
           )
         ]);
 
         diagnosticData = {
-          ...diagnosticData.toJSON(),
+          ...intervention.diagnostic.toJSON(),
           travailRequis: travailRequis.map(t => t.travail),
           besoinPDR: besoinPDR.map(b => b.besoin),
           chargesRealisees: chargesRealisees.map(c => c.charge)
         };
       } catch (diagError) {
         console.error('Error fetching diagnostic arrays:', diagError);
+        diagnosticData = {
+          ...intervention.diagnostic.toJSON(),
+          travailRequis: [],
+          besoinPDR: [],
+          chargesRealisees: []
+        };
       }
     }
 
+    // Return proper workflow structure
     const workflow = {
       intervention: {
         id: intervention.id,
@@ -619,11 +626,21 @@ const getWorkflowStatus = async (req, res) => {
         planification: {
           completed: !!intervention.planification,
           dateCreation: intervention.planification?.dateCreation,
-          disponibilitePDR: intervention.planification?.disponibilitePDR
+          data: intervention.planification ? {
+            ...intervention.planification.toJSON(),
+            capaciteExecution: intervention.planification.capaciteExecution,
+            urgencePrise: intervention.planification.urgencePrise,
+            disponibilitePDR: intervention.planification.disponibilitePDR
+          } : null
         },
         controleQualite: {
           completed: !!intervention.controleQualite,
-          dateControle: intervention.controleQualite?.dateControle
+          dateControle: intervention.controleQualite?.dateControle,
+          data: intervention.controleQualite ? {
+            ...intervention.controleQualite.toJSON(),
+            resultatsEssais: intervention.controleQualite.resultatsEssais,
+            analyseVibratoire: intervention.controleQualite.analyseVibratoire
+          } : null
         }
       },
       nextActions: getNextActions(intervention)
