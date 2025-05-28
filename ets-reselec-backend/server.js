@@ -116,7 +116,8 @@ app.get('/api/docs', (req, res) => {
     }
   });
 });
-
+const analyticsRoutes = require('./routes/analytics');
+app.use('/api/analytics', analyticsRoutes);
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({

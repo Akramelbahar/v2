@@ -304,41 +304,9 @@ const getEquipmentTypes = async (req, res) => {
     sendError(res, 'Failed to retrieve equipment types', 500, error.message);
   }
 };
-const QRCode = require('qrcode');
+//const QRCode = require('qrcode');
 
 // POST /api/equipment/:id/generate-qr - Generate QR code for equipment
-const generateQRCode = async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    const equipment = await Equipment.findByPk(id, {
-      include: [{
-        model: Client,
-        as: 'proprietaire',
-        attributes: ['nom_entreprise']
-      }]
-    });
-
-    if (!equipment) {
-      return sendError(res, 'Equipment not found', 404);
-    }
-
-    const qrData = {
-      id: equipment.id,
-      nom: equipment.nom,
-      type: equipment.type_equipement,
-      proprietaire: equipment.proprietaire.nom_entreprise,
-      url: `${process.env.FRONTEND_URL}/equipment/${equipment.id}`
-    };
-
-    const qrCodeDataURL = await QRCode.toDataURL(JSON.stringify(qrData));
-    
-    sendSuccess(res, { qrCode: qrCodeDataURL, data: qrData });
-  } catch (error) {
-    console.error('Generate QR code error:', error);
-    sendError(res, 'Failed to generate QR code', 500, error.message);
-  }
-};
 
 // GET /api/equipment/:id/history - Get complete intervention history
 const getEquipmentHistory = async (req, res) => {
@@ -413,6 +381,6 @@ module.exports = {
   getEquipmentById,
   createEquipment,
   updateEquipment,
-  deleteEquipment,getEquipmentHistory,generateQRCode,
+  deleteEquipment,getEquipmentHistory,
   getEquipmentTypes
 };
