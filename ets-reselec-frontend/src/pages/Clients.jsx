@@ -1,9 +1,8 @@
-// src/pages/Clients.jsx
+// ets-reselec-frontend/src/pages/Clients.jsx
 import React, { useState } from 'react';
 import { 
-  Users, Plus, Search, Edit, Trash2, Eye, Building, Phone, Mail,
-  MapPin, User, Calendar, FileText, Package, MoreVertical,
-  Filter, Download, Upload, RefreshCw, AlertCircle
+  Users, Plus, Search, Edit, Trash2, Eye, Filter, Building, 
+  Phone, Mail, MapPin, AlertCircle, Save, X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import DataTable from '../components/common/DataTable';
@@ -12,18 +11,18 @@ import SearchInput from '../components/common/SearchInput';
 import Pagination from '../components/common/Pagination';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import LoadingSpinner from '../components/common/LoadingSpinner';
-import FormField from '../components/forms/FormField';
 
+// Import custom hooks
 import {
   useClients,
-  useClient,
   useCreateClient,
   useUpdateClient,
   useDeleteClient,
   useClientSectors
 } from '../hooks/useClients';
+
 import { formatDate, formatDateTime } from '../utils/dateUtils';
-import { formatPhoneNumber, truncateText } from '../utils/formatUtils';
+import { formatPhoneNumber } from '../utils/formatUtils';
 
 const Clients = () => {
   const { hasPermission } = useAuth();
@@ -37,18 +36,13 @@ const Clients = () => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   // Data queries
-  const { 
-    data: clientsData, 
-    isLoading, 
-    isError, 
-    refetch 
-  } = useClients({ 
+  const { data: clientsData, isLoading } = useClients({ 
     page: currentPage, 
     limit: pageSize, 
     search: searchQuery,
     ...filters 
   });
-
+  
   const { data: clientSectors } = useClientSectors();
 
   // Mutations
@@ -100,14 +94,6 @@ const Clients = () => {
     setCurrentPage(1);
   };
 
-  const handleFilterChange = (key, value) => {
-    setFilters(prev => ({
-      ...prev,
-      [key]: value || undefined
-    }));
-    setCurrentPage(1);
-  };
-
   // Client Form Component
   const ClientForm = ({ client, onSubmit, loading }) => {
     const [formData, setFormData] = useState({
@@ -138,415 +124,477 @@ const Clients = () => {
       if (!formData.nom_entreprise.trim()) {
         newErrors.nom_entreprise = 'Le nom de l\'entreprise est requis';
       }
-
-      if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-        newErrors.email = 'Email invalide';
+      
+      if (formData.email && !/\S+@\S+\.\S+/.test(formData.email)) {
+        newErrors.email = 'Format d\'email invalide';
       }
-
-      if (formData.email_contact && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email_contact)) {
-        newErrors.email_contact = 'Email de contact invalide';
+      
+      if (formData.email_contact && !/\S+@\S+\.\S+/.test(formData.email_contact)) {
+        newErrors.email_contact = 'Format d\'email de contact invalide';
       }
-
+      
       if (Object.keys(newErrors).length > 0) {
         setErrors(newErrors);
         return;
       }
-
+      
       onSubmit(formData);
     };
 
     const handleChange = (field, value) => {
       setFormData(prev => ({ ...prev, [field]: value }));
       if (errors[field]) {
-        setErrors(prev => ({ ...prev, [field]: '' }));
+        setErrors(prev => ({ ...prev, [field]: null }));
       }
     };
 
     return (
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Company Information */}
-        <div>
-          <h4 className="text-lg font-medium text-gray-900 mb-4">Informations de l'entreprise</h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormField
-              label="Nom de l'entreprise"
-              name="nom_entreprise"
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Company Name */}
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Nom de l'entreprise *
+            </label>
+            <input
+              type="text"
               required
-              error={errors.nom_entreprise}
-            >
-              <input
-                type="text"
-                className="form-input"
-                value={formData.nom_entreprise}
-                onChange={(e) => handleChange('nom_entreprise', e.target.value)}
-                placeholder="Nom de l'entreprise"
-              />
-            </FormField>
-            
-            <FormField
-              label="Secteur d'activité"
-              name="secteur_activite"
-            >
-              <input
-                type="text"
-                className="form-input"
-                value={formData.secteur_activite}
-                onChange={(e) => handleChange('secteur_activite', e.target.value)}
-                placeholder="Secteur d'activité"
-                list="sectors"
-              />
-              <datalist id="sectors">
-                {clientSectors?.map(sector => (
-                  <option key={sector} value={sector} />
-                ))}
-              </datalist>
-            </FormField>
+              className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                errors.nom_entreprise ? 'border-red-300' : 'border-gray-300'
+              }`}
+              value={formData.nom_entreprise}
+              onChange={(e) => handleChange('nom_entreprise', e.target.value)}
+              placeholder="Nom de l'entreprise"
+            />
+            {errors.nom_entreprise && (
+              <p className="mt-1 text-sm text-red-600 flex items-center">
+                <AlertCircle className="w-4 h-4 mr-1" />
+                {errors.nom_entreprise}
+              </p>
+            )}
+          </div>
 
-            <FormField
-              label="Forme juridique"
-              name="forme_juridique"
-            >
-              <select
-                className="form-input"
-                value={formData.forme_juridique}
-                onChange={(e) => handleChange('forme_juridique', e.target.value)}
-              >
-                <option value="">Sélectionner</option>
-                <option value="SARL">SARL</option>
-                <option value="SA">SA</option>
-                <option value="SAS">SAS</option>
-                <option value="Auto-entrepreneur">Auto-entrepreneur</option>
-                <option value="Autre">Autre</option>
-              </select>
-            </FormField>
+          {/* Business Sector */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Secteur d'activité
+            </label>
+            <input
+              type="text"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={formData.secteur_activite}
+              onChange={(e) => handleChange('secteur_activite', e.target.value)}
+              placeholder="Secteur d'activité"
+              list="sectors"
+            />
+            <datalist id="sectors">
+              {clientSectors?.map(sector => (
+                <option key={sector} value={sector} />
+              ))}
+            </datalist>
+          </div>
 
-            <FormField
-              label="Registre de commerce"
-              name="registre_commerce"
+          {/* Legal Form */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Forme juridique
+            </label>
+            <select
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={formData.forme_juridique}
+              onChange={(e) => handleChange('forme_juridique', e.target.value)}
             >
-              <input
-                type="text"
-                className="form-input"
-                value={formData.registre_commerce}
-                onChange={(e) => handleChange('registre_commerce', e.target.value)}
-                placeholder="Numéro RC"
-              />
-            </FormField>
+              <option value="">Sélectionner</option>
+              <option value="SARL">SARL</option>
+              <option value="SA">SA</option>
+              <option value="SAS">SAS</option>
+              <option value="Entreprise individuelle">Entreprise individuelle</option>
+              <option value="Association">Association</option>
+              <option value="Autre">Autre</option>
+            </select>
+          </div>
+
+          {/* Address */}
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Adresse
+            </label>
+            <input
+              type="text"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={formData.adresse}
+              onChange={(e) => handleChange('adresse', e.target.value)}
+              placeholder="Adresse complète"
+            />
+          </div>
+
+          {/* City */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Ville
+            </label>
+            <input
+              type="text"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={formData.ville}
+              onChange={(e) => handleChange('ville', e.target.value)}
+              placeholder="Ville"
+            />
+          </div>
+
+          {/* Postal Code */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Code postal
+            </label>
+            <input
+              type="text"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={formData.codePostal}
+              onChange={(e) => handleChange('codePostal', e.target.value)}
+              placeholder="Code postal"
+            />
+          </div>
+
+          {/* Phone */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Téléphone
+            </label>
+            <input
+              type="tel"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={formData.tel}
+              onChange={(e) => handleChange('tel', e.target.value)}
+              placeholder="+212 6XX XX XX XX"
+            />
+          </div>
+
+          {/* Fax */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Fax
+            </label>
+            <input
+              type="tel"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={formData.fax}
+              onChange={(e) => handleChange('fax', e.target.value)}
+              placeholder="Fax"
+            />
+          </div>
+
+          {/* Email */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Email
+            </label>
+            <input
+              type="email"
+              className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                errors.email ? 'border-red-300' : 'border-gray-300'
+              }`}
+              value={formData.email}
+              onChange={(e) => handleChange('email', e.target.value)}
+              placeholder="email@exemple.com"
+            />
+            {errors.email && (
+              <p className="mt-1 text-sm text-red-600 flex items-center">
+                <AlertCircle className="w-4 h-4 mr-1" />
+                {errors.email}
+              </p>
+            )}
+          </div>
+
+          {/* Website */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Site web
+            </label>
+            <input
+              type="url"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={formData.siteWeb}
+              onChange={(e) => handleChange('siteWeb', e.target.value)}
+              placeholder="https://www.exemple.com"
+            />
           </div>
         </div>
 
-        {/* Address Information */}
-        <div>
-          <h4 className="text-lg font-medium text-gray-900 mb-4">Adresse</h4>
+        {/* Contact Information Section */}
+        <div className="border-t pt-6">
+          <h4 className="text-lg font-medium text-gray-900 mb-4">Contact Principal</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="md:col-span-2">
-              <FormField
-                label="Adresse"
-                name="adresse"
-              >
-                <input
-                  type="text"
-                  className="form-input"
-                  value={formData.adresse}
-                  onChange={(e) => handleChange('adresse', e.target.value)}
-                  placeholder="Adresse complète"
-                />
-              </FormField>
-            </div>
-
-            <FormField
-              label="Ville"
-              name="ville"
-            >
+            {/* Main Contact */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Nom du contact
+              </label>
               <input
                 type="text"
-                className="form-input"
-                value={formData.ville}
-                onChange={(e) => handleChange('ville', e.target.value)}
-                placeholder="Ville"
-              />
-            </FormField>
-
-            <FormField
-              label="Code postal"
-              name="codePostal"
-            >
-              <input
-                type="text"
-                className="form-input"
-                value={formData.codePostal}
-                onChange={(e) => handleChange('codePostal', e.target.value)}
-                placeholder="Code postal"
-              />
-            </FormField>
-          </div>
-        </div>
-
-        {/* Contact Information */}
-        <div>
-          <h4 className="text-lg font-medium text-gray-900 mb-4">Contact</h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormField
-              label="Téléphone"
-              name="tel"
-            >
-              <input
-                type="tel"
-                className="form-input"
-                value={formData.tel}
-                onChange={(e) => handleChange('tel', e.target.value)}
-                placeholder="+212 6XX XX XX XX"
-              />
-            </FormField>
-
-            <FormField
-              label="Fax"
-              name="fax"
-            >
-              <input
-                type="tel"
-                className="form-input"
-                value={formData.fax}
-                onChange={(e) => handleChange('fax', e.target.value)}
-                placeholder="Numéro de fax"
-              />
-            </FormField>
-
-            <FormField
-              label="Email"
-              name="email"
-              error={errors.email}
-            >
-              <input
-                type="email"
-                className="form-input"
-                value={formData.email}
-                onChange={(e) => handleChange('email', e.target.value)}
-                placeholder="email@entreprise.com"
-              />
-            </FormField>
-
-            <FormField
-              label="Site web"
-              name="siteWeb"
-            >
-              <input
-                type="url"
-                className="form-input"
-                value={formData.siteWeb}
-                onChange={(e) => handleChange('siteWeb', e.target.value)}
-                placeholder="https://www.entreprise.com"
-              />
-            </FormField>
-
-            <FormField
-              label="Contact principal"
-              name="contact_principal"
-            >
-              <input
-                type="text"
-                className="form-input"
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 value={formData.contact_principal}
                 onChange={(e) => handleChange('contact_principal', e.target.value)}
-                placeholder="Nom du contact"
+                placeholder="Nom du contact principal"
               />
-            </FormField>
+            </div>
 
-            <FormField
-              label="Poste du contact"
-              name="poste_contact"
-            >
+            {/* Position */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Poste
+              </label>
               <input
                 type="text"
-                className="form-input"
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 value={formData.poste_contact}
                 onChange={(e) => handleChange('poste_contact', e.target.value)}
-                placeholder="Directeur, Manager, etc."
+                placeholder="Poste du contact"
               />
-            </FormField>
+            </div>
 
-            <FormField
-              label="Téléphone du contact"
-              name="telephone_contact"
-            >
+            {/* Contact Phone */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Téléphone contact
+              </label>
               <input
                 type="tel"
-                className="form-input"
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 value={formData.telephone_contact}
                 onChange={(e) => handleChange('telephone_contact', e.target.value)}
-                placeholder="+212 6XX XX XX XX"
+                placeholder="Téléphone du contact"
               />
-            </FormField>
+            </div>
 
-            <FormField
-              label="Email du contact"
-              name="email_contact"
-              error={errors.email_contact}
-            >
+            {/* Contact Email */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Email contact
+              </label>
               <input
                 type="email"
-                className="form-input"
+                className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                  errors.email_contact ? 'border-red-300' : 'border-gray-300'
+                }`}
                 value={formData.email_contact}
                 onChange={(e) => handleChange('email_contact', e.target.value)}
-                placeholder="contact@entreprise.com"
+                placeholder="Email du contact"
               />
-            </FormField>
+              {errors.email_contact && (
+                <p className="mt-1 text-sm text-red-600 flex items-center">
+                  <AlertCircle className="w-4 h-4 mr-1" />
+                  {errors.email_contact}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Additional Information */}
+        <div className="border-t pt-6">
+          <h4 className="text-lg font-medium text-gray-900 mb-4">Informations Légales</h4>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Registre de commerce
+            </label>
+            <input
+              type="text"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={formData.registre_commerce}
+              onChange={(e) => handleChange('registre_commerce', e.target.value)}
+              placeholder="Numéro du registre de commerce"
+            />
           </div>
         </div>
         
-        <div className="flex justify-end space-x-2 pt-4 border-t">
+        <div className="flex justify-end space-x-3 pt-6 border-t">
           <button
             type="button"
             onClick={closeModal}
-            className="btn btn-secondary"
-            disabled={loading}
+            className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
           >
-            Annuler
+            <X className="w-4 h-4" />
+            <span>Annuler</span>
           </button>
           <button
             type="submit"
             disabled={loading}
-            className="btn btn-primary"
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center space-x-2"
           >
-            {loading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>}
-            {client ? 'Modifier' : 'Créer'}
+            {loading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
+            <Save className="w-4 h-4" />
+            <span>{client ? 'Modifier' : 'Créer'}</span>
           </button>
         </div>
       </form>
     );
   };
 
-  // Client Detail Component
-  const ClientDetail = ({ client }) => {
-    if (!client) return null;
-
-    return (
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-lg p-6 text-white">
-          <div className="flex items-center space-x-4">
-            <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
-              <Building className="w-8 h-8" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold">{client.nom_entreprise}</h2>
-              <p className="text-blue-100">{client.secteur_activite}</p>
-              <p className="text-blue-200 text-sm">{client.ville}</p>
-            </div>
+  // Client Detail Modal
+  const ClientDetailModal = ({ client }) => (
+    <div className="space-y-6">
+      {/* Company Info */}
+      <div className="bg-blue-50 rounded-lg p-6">
+        <div className="flex items-start space-x-4">
+          <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center">
+            <Building className="w-6 h-6 text-white" />
           </div>
-        </div>
-
-        {/* Details Tabs */}
-        <div className="bg-white rounded-lg shadow-sm border">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6">
-            {/* Company Information */}
-            <div>
-              <h3 className="text-lg font-semibold mb-4 flex items-center space-x-2">
-                <Building className="w-5 h-5" />
-                <span>Informations générales</span>
-              </h3>
-              <div className="space-y-3">
-                <div>
-                  <span className="text-sm font-medium text-gray-500">Forme juridique:</span>
-                  <p className="text-gray-900">{client.forme_juridique || 'Non spécifiée'}</p>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-gray-500">Registre de commerce:</span>
-                  <p className="text-gray-900">{client.registre_commerce || 'Non spécifié'}</p>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-gray-500">Adresse complète:</span>
-                  <p className="text-gray-900">{client.adresse ? `${client.adresse}, ${client.ville} ${client.codePostal}` : 'Non spécifiée'}</p>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-gray-500">Site web:</span>
-                  {client.siteWeb ? (
-                    <a href={client.siteWeb} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">
-                      {client.siteWeb}
-                    </a>
-                  ) : (
-                    <p className="text-gray-900">Non spécifié</p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Contact Information */}
-            <div>
-              <h3 className="text-lg font-semibold mb-4 flex items-center space-x-2">
-                <User className="w-5 h-5" />
-                <span>Contact</span>
-              </h3>
-              <div className="space-y-3">
-                <div>
-                  <span className="text-sm font-medium text-gray-500">Contact principal:</span>
-                  <p className="text-gray-900">{client.contact_principal || 'Non spécifié'}</p>
-                  {client.poste_contact && (
-                    <p className="text-sm text-gray-600">{client.poste_contact}</p>
-                  )}
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Phone className="w-4 h-4 text-gray-400" />
-                  <span className="text-gray-900">{formatPhoneNumber(client.tel) || 'Non spécifié'}</span>
-                </div>
-                {client.telephone_contact && (
-                  <div className="flex items-center space-x-2">
-                    <Phone className="w-4 h-4 text-gray-400" />
-                    <span className="text-gray-900">{formatPhoneNumber(client.telephone_contact)} (Contact direct)</span>
-                  </div>
-                )}
-                <div className="flex items-center space-x-2">
-                  <Mail className="w-4 h-4 text-gray-400" />
-                  <span className="text-gray-900">{client.email || 'Non spécifié'}</span>
-                </div>
-                {client.email_contact && (
-                  <div className="flex items-center space-x-2">
-                    <Mail className="w-4 h-4 text-gray-400" />
-                    <span className="text-gray-900">{client.email_contact} (Contact direct)</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Statistics */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white rounded-lg shadow-sm border p-6">
-            <div className="flex items-center space-x-3">
-              <Package className="w-8 h-8 text-blue-600" />
-              <div>
-                <p className="text-2xl font-bold text-gray-900">{client.equipmentCount || 0}</p>
-                <p className="text-sm text-gray-600">Équipements</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-lg shadow-sm border p-6">
-            <div className="flex items-center space-x-3">
-              <FileText className="w-8 h-8 text-green-600" />
-              <div>
-                <p className="text-2xl font-bold text-gray-900">{client.interventionCount || 0}</p>
-                <p className="text-sm text-gray-600">Interventions</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-lg shadow-sm border p-6">
-            <div className="flex items-center space-x-3">
-              <Calendar className="w-8 h-8 text-purple-600" />
-              <div>
-                <p className="text-sm text-gray-900">Créé le</p>
-                <p className="text-sm text-gray-600">{formatDate(client.createdAt)}</p>
-              </div>
-            </div>
+          <div className="flex-1">
+            <h3 className="text-xl font-bold text-gray-900">{client.nom_entreprise}</h3>
+            {client.secteur_activite && (
+              <p className="text-blue-600 font-medium">{client.secteur_activite}</p>
+            )}
+            {client.forme_juridique && (
+              <p className="text-gray-600">{client.forme_juridique}</p>
+            )}
           </div>
         </div>
       </div>
-    );
-  };
 
-  // Table columns configuration
+      {/* Contact Information */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Address */}
+        {(client.adresse || client.ville || client.codePostal) && (
+          <div className="bg-white border rounded-lg p-4">
+            <h4 className="font-semibold text-gray-900 mb-3 flex items-center">
+              <MapPin className="w-4 h-4 mr-2 text-gray-600" />
+              Adresse
+            </h4>
+            <div className="text-sm text-gray-600 space-y-1">
+              {client.adresse && <p>{client.adresse}</p>}
+              <p>
+                {[client.ville, client.codePostal].filter(Boolean).join(', ')}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Contact Details */}
+        <div className="bg-white border rounded-lg p-4">
+          <h4 className="font-semibold text-gray-900 mb-3 flex items-center">
+            <Phone className="w-4 h-4 mr-2 text-gray-600" />
+            Contact
+          </h4>
+          <div className="text-sm text-gray-600 space-y-2">
+            {client.tel && (
+              <p className="flex items-center">
+                <Phone className="w-3 h-3 mr-2" />
+                {formatPhoneNumber(client.tel)}
+              </p>
+            )}
+            {client.fax && (
+              <p className="flex items-center">
+                <Phone className="w-3 h-3 mr-2" />
+                Fax: {formatPhoneNumber(client.fax)}
+              </p>
+            )}
+            {client.email && (
+              <p className="flex items-center">
+                <Mail className="w-3 h-3 mr-2" />
+                {client.email}
+              </p>
+            )}
+            {client.siteWeb && (
+              <p className="flex items-center">
+                <Building className="w-3 h-3 mr-2" />
+                <a 
+                  href={client.siteWeb} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline"
+                >
+                  {client.siteWeb}
+                </a>
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Principal Contact */}
+      {(client.contact_principal || client.telephone_contact || client.email_contact) && (
+        <div className="bg-white border rounded-lg p-4">
+          <h4 className="font-semibold text-gray-900 mb-3">Contact Principal</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            {client.contact_principal && (
+              <div>
+                <p className="font-medium text-gray-700">Nom</p>
+                <p className="text-gray-600">{client.contact_principal}</p>
+              </div>
+            )}
+            {client.poste_contact && (
+              <div>
+                <p className="font-medium text-gray-700">Poste</p>
+                <p className="text-gray-600">{client.poste_contact}</p>
+              </div>
+            )}
+            {client.telephone_contact && (
+              <div>
+                <p className="font-medium text-gray-700">Téléphone</p>
+                <p className="text-gray-600">{formatPhoneNumber(client.telephone_contact)}</p>
+              </div>
+            )}
+            {client.email_contact && (
+              <div>
+                <p className="font-medium text-gray-700">Email</p>
+                <p className="text-gray-600">{client.email_contact}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Legal Information */}
+      {client.registre_commerce && (
+        <div className="bg-white border rounded-lg p-4">
+          <h4 className="font-semibold text-gray-900 mb-3">Informations Légales</h4>
+          <div className="text-sm">
+            <p className="text-gray-600">
+              <span className="font-medium">Registre de commerce:</span> {client.registre_commerce}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Statistics */}
+      <div className="bg-gray-50 rounded-lg p-4">
+        <h4 className="font-semibold text-gray-900 mb-3">Statistiques</h4>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+          <div className="text-center">
+            <p className="text-2xl font-bold text-blue-600">{client.equipmentCount || 0}</p>
+            <p className="text-gray-600">Équipements</p>
+          </div>
+          <div className="text-center">
+            <p className="text-2xl font-bold text-green-600">{client.interventionCount || 0}</p>
+            <p className="text-gray-600">Interventions</p>
+          </div>
+          <div className="text-center">
+            <p className="text-sm text-gray-600">Créé le</p>
+            <p className="font-medium">{formatDate(client.createdAt)}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex justify-end space-x-3 pt-4 border-t">
+        {hasPermission('clients:update') && (
+          <button 
+            onClick={() => {
+              closeModal();
+              openModal('client', client);
+            }}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-blue-700"
+          >
+            <Edit className="w-4 h-4" />
+            <span>Modifier</span>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  // Table columns
   const columns = [
     { 
       key: 'nom_entreprise', 
@@ -554,28 +602,34 @@ const Clients = () => {
       render: (value, row) => (
         <div>
           <div className="font-medium text-gray-900">{value}</div>
-          <div className="text-sm text-gray-500">{row.secteur_activite}</div>
+          {row.secteur_activite && (
+            <div className="text-sm text-gray-500">{row.secteur_activite}</div>
+          )}
         </div>
       )
     },
     { 
       key: 'ville', 
-      header: 'Localisation',
-      render: (value, row) => (
-        <div className="flex items-center space-x-1">
-          <MapPin className="w-4 h-4 text-gray-400" />
-          <span>{value || 'Non spécifiée'}</span>
-        </div>
-      )
+      header: 'Ville',
+      render: (value) => value || '-'
     },
     { 
       key: 'contact_principal', 
       header: 'Contact',
       render: (value, row) => (
         <div>
-          <div className="text-gray-900">{value || 'Non spécifié'}</div>
+          {value && <div className="font-medium">{value}</div>}
           {row.telephone_contact && (
-            <div className="text-sm text-gray-500">{formatPhoneNumber(row.telephone_contact)}</div>
+            <div className="text-sm text-gray-500 flex items-center">
+              <Phone className="w-3 h-3 mr-1" />
+              {formatPhoneNumber(row.telephone_contact)}
+            </div>
+          )}
+          {row.email_contact && (
+            <div className="text-sm text-gray-500 flex items-center">
+              <Mail className="w-3 h-3 mr-1" />
+              {row.email_contact}
+            </div>
           )}
         </div>
       )
@@ -592,17 +646,17 @@ const Clients = () => {
   ];
 
   // Table actions
-  const actions = [
+  const actions = hasPermission('clients:read') ? [
     {
       icon: Eye,
       label: 'Voir',
-      onClick: (row) => openModal('detail', row),
+      onClick: (row) => openModal('client-detail', row),
       className: 'text-blue-600 hover:text-blue-800'
     },
     ...(hasPermission('clients:update') ? [{
       icon: Edit,
       label: 'Modifier',
-      onClick: (row) => openModal('edit', row),
+      onClick: (row) => openModal('client', row),
       className: 'text-yellow-600 hover:text-yellow-800'
     }] : []),
     ...(hasPermission('clients:delete') ? [{
@@ -611,28 +665,7 @@ const Clients = () => {
       onClick: (row) => openDeleteDialog(row),
       className: 'text-red-600 hover:text-red-800'
     }] : [])
-  ];
-
-  if (isError) {
-    return (
-      <div className="space-y-6">
-        <div className="bg-white rounded-lg shadow-sm border p-6 text-center">
-          <div className="text-red-600 mb-4">
-            <AlertCircle className="w-12 h-12 mx-auto" />
-          </div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">Erreur de chargement</h2>
-          <p className="text-gray-600 mb-4">Impossible de charger les données des clients</p>
-          <button 
-            onClick={() => refetch()}
-            className="btn btn-primary"
-          >
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Réessayer
-          </button>
-        </div>
-      </div>
-    );
-  }
+  ] : null;
 
   return (
     <div className="space-y-6">
@@ -641,18 +674,20 @@ const Clients = () => {
         <div className="flex justify-between items-start">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center space-x-2">
-              <Users className="w-8 h-8 text-blue-600" />
+              <Users className="w-6 h-6 text-blue-600" />
               <span>Gestion des Clients</span>
             </h1>
-            <p className="text-gray-600 mt-1">Gérez vos clients et leurs informations</p>
+            <p className="text-gray-600 mt-1">
+              Gérez les informations de vos clients et suivez leurs équipements
+            </p>
           </div>
           {hasPermission('clients:create') && (
             <button 
-              onClick={() => openModal('create')}
-              className="btn btn-primary"
+              onClick={() => openModal('client')}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-blue-700"
             >
-              <Plus className="w-4 h-4 mr-2" />
-              Nouveau Client
+              <Plus className="w-4 h-4" />
+              <span>Nouveau Client</span>
             </button>
           )}
         </div>
@@ -660,39 +695,32 @@ const Clients = () => {
 
       {/* Filters and Search */}
       <div className="bg-white rounded-lg shadow-sm border p-6">
-        <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
+        <div className="flex flex-col md:flex-row md:items-center space-y-4 md:space-y-0 md:space-x-4">
           <div className="flex-1">
             <SearchInput
               value={searchQuery}
               onChange={handleSearch}
-              placeholder="Rechercher par nom, secteur, ville..."
-              className="w-full"
+              placeholder="Rechercher par nom d'entreprise, secteur, ville ou contact..."
+              size="default"
             />
           </div>
-          
-          <select 
-            className="form-input min-w-[200px]"
-            value={filters.secteur_activite || ''}
-            onChange={(e) => handleFilterChange('secteur_activite', e.target.value)}
-          >
-            <option value="">Tous les secteurs</option>
-            {clientSectors?.map(sector => (
-              <option key={sector} value={sector}>{sector}</option>
-            ))}
-          </select>
-
-          <div className="flex space-x-2">
-            <button className="btn btn-secondary">
-              <Download className="w-4 h-4 mr-2" />
-              Exporter
-            </button>
-            <button 
-              onClick={() => refetch()}
-              className="btn btn-secondary"
-              disabled={isLoading}
+          <div className="flex space-x-3">
+            <select 
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={filters.secteur_activite || ''}
+              onChange={(e) => setFilters(prev => ({ 
+                ...prev, 
+                secteur_activite: e.target.value || undefined 
+              }))}
             >
-              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              Actualiser
+              <option value="">Tous les secteurs</option>
+              {clientSectors?.map(sector => (
+                <option key={sector} value={sector}>{sector}</option>
+              ))}
+            </select>
+            <button className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center space-x-2">
+              <Filter className="w-4 h-4" />
+              <span>Filtres</span>
             </button>
           </div>
         </div>
@@ -701,9 +729,9 @@ const Clients = () => {
       {/* Data Table */}
       <DataTable
         data={clientsData?.data || []}
-        columns={columns}
         loading={isLoading}
-        actions={hasPermission('clients:read') ? actions : null}
+        columns={columns}
+        actions={actions}
         emptyMessage="Aucun client trouvé"
         pagination={
           <Pagination
@@ -713,6 +741,8 @@ const Clients = () => {
             pageSize={pageSize}
             onPageChange={handlePageChange}
             onPageSizeChange={handlePageSizeChange}
+            showPageSizeSelect={true}
+            showInfo={true}
           />
         }
       />
@@ -723,22 +753,28 @@ const Clients = () => {
           isOpen={showModal}
           onClose={closeModal}
           title={
-            modalType === 'create' ? 'Nouveau Client' :
-            modalType === 'edit' ? 'Modifier le Client' :
-            modalType === 'detail' ? 'Détails du Client' : ''
+            modalType === 'client-detail' 
+              ? 'Détails du Client' 
+              : selectedClient 
+                ? 'Modifier le Client' 
+                : 'Nouveau Client'
           }
-          size={modalType === 'detail' ? 'xl' : 'lg'}
+          size={modalType === 'client-detail' ? 'xl' : 'lg'}
         >
-          {modalType === 'detail' ? (
-            <ClientDetail client={selectedClient} />
+          {modalType === 'client-detail' ? (
+            <ClientDetailModal client={selectedClient} />
           ) : (
             <ClientForm
               client={selectedClient}
               onSubmit={(data) => {
-                if (modalType === 'edit') {
-                  updateClientMutation.mutate({ id: selectedClient.id, data });
+                if (selectedClient) {
+                  updateClientMutation.mutate({ id: selectedClient.id, data }, {
+                    onSuccess: closeModal
+                  });
                 } else {
-                  createClientMutation.mutate(data);
+                  createClientMutation.mutate(data, {
+                    onSuccess: closeModal
+                  });
                 }
               }}
               loading={createClientMutation.isPending || updateClientMutation.isPending}
@@ -753,7 +789,7 @@ const Clients = () => {
         onClose={() => setShowDeleteDialog(false)}
         onConfirm={handleDelete}
         title="Confirmer la suppression"
-        message={`Êtes-vous sûr de vouloir supprimer le client "${selectedClient?.nom_entreprise}" ? Cette action est irréversible.`}
+        message={`Êtes-vous sûr de vouloir supprimer le client "${selectedClient?.nom_entreprise}" ? Cette action est irréversible et supprimera également tous les équipements associés.`}
         type="danger"
         confirmText="Supprimer"
         loading={deleteClientMutation.isPending}
