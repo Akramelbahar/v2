@@ -10,8 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   AlertCircle,
-  CheckCircle,
-  Shield
+  CheckCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -19,7 +18,7 @@ const Header = ({ onMenuClick, sidebarCollapsed, onToggleSidebar }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const { user, logout, getRole, getPermissions } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   
   const userMenuRef = useRef(null);
@@ -99,18 +98,22 @@ const Header = ({ onMenuClick, sidebarCollapsed, onToggleSidebar }) => {
   };
   
   const getUserInitials = (name) => {
-    if (!name) return 'U';
     return name
-      .split(' ')
+      ?.split(' ')
       .map(word => word.charAt(0))
       .join('')
       .toUpperCase()
-      .slice(0, 2);
+      .slice(0, 2) || 'U';
   };
 
-  // Get current role and permissions
-  const currentRole = getRole();
-  const currentPermissions = getPermissions();
+  // Helper function to safely get role name
+  const getRoleName = (role) => {
+    if (!role) return 'Rôle non défini';
+    if (typeof role === 'string') return role;
+    if (typeof role === 'object' && role.nom) return role.nom;
+    if (typeof role === 'object' && role.name) return role.name;
+    return 'Rôle non défini';
+  };
 
   return (
     <header className="bg-white shadow-sm border-b border-gray-200">
@@ -246,49 +249,17 @@ const Header = ({ onMenuClick, sidebarCollapsed, onToggleSidebar }) => {
                 </div>
                 <div className="hidden md:block text-left">
                   <p className="text-sm font-medium text-gray-900">{user?.nom || 'Utilisateur'}</p>
-                  <p className="text-xs text-gray-500">{currentRole || 'Aucun rôle'}</p>
+                  <p className="text-xs text-gray-500">{getRoleName(user?.role)}</p>
                 </div>
               </button>
               
               {/* User dropdown menu */}
               {showUserMenu && (
-                <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-medium border border-gray-200 z-50">
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-medium border border-gray-200 z-50">
                   <div className="p-4 border-b border-gray-200">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-12 h-12 bg-primary-600 rounded-full flex items-center justify-center text-white font-medium">
-                        {getUserInitials(user?.nom)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{user?.nom}</p>
-                        <p className="text-xs text-gray-500 truncate">@{user?.username}</p>
-                        <div className="flex items-center space-x-1 mt-1">
-                          <Shield className="w-3 h-3 text-primary-600" />
-                          <p className="text-xs text-primary-600 font-medium">{currentRole || 'Aucun rôle'}</p>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* User permissions preview */}
-                    {currentPermissions.length > 0 && (
-                      <div className="mt-3">
-                        <p className="text-xs text-gray-500 mb-1">Permissions:</p>
-                        <div className="flex flex-wrap gap-1">
-                          {currentPermissions.slice(0, 3).map((permission, index) => (
-                            <span
-                              key={index}
-                              className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full text-xs font-medium"
-                            >
-                              {permission.split(':')[0]}
-                            </span>
-                          ))}
-                          {currentPermissions.length > 3 && (
-                            <span className="text-xs text-gray-500">
-                              +{currentPermissions.length - 3} autres
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    )}
+                    <p className="text-sm font-medium text-gray-900">{user?.nom}</p>
+                    <p className="text-xs text-gray-500">{user?.username}</p>
+                    <p className="text-xs text-primary-600">{getRoleName(user?.role)}</p>
                   </div>
                   
                   <div className="py-2">

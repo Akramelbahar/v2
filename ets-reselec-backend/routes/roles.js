@@ -1,6 +1,4 @@
 
-
-// 15. Backend Routes Configuration
 // ets-reselec-backend/routes/roles.js
 const express = require('express');
 const router = express.Router();

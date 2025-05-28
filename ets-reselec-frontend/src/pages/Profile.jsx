@@ -14,6 +14,25 @@ const Profile = () => {
   
   const { user, updateProfile, changePassword } = useAuth();
   
+  // Helper function to safely get role name
+  const getRoleName = (role) => {
+    if (!role) return 'Rôle non défini';
+    if (typeof role === 'string') return role;
+    if (typeof role === 'object' && role.nom) return role.nom;
+    if (typeof role === 'object' && role.name) return role.name;
+    return 'Rôle non défini';
+  };
+
+  // Helper function to get user initials
+  const getUserInitials = (name) => {
+    return name
+      ?.split(' ')
+      .map(word => word.charAt(0))
+      .join('')
+      .toUpperCase()
+      .slice(0, 2) || 'U';
+  };
+  
   // Profile form
   const {
     register: registerProfile,
@@ -80,33 +99,21 @@ const Profile = () => {
     }
   };
   
-  const getUserInitials = (name) => {
-    return name
-      ?.split(' ')
-      .map(word => word.charAt(0))
-      .join('')
-      .toUpperCase()
-      .slice(0, 2) || 'U';
-  };
-  
   const ProfileTab = () => (
     <div className="space-y-6">
       {/* Profile Header */}
       <div className="bg-gradient-to-r from-primary-600 to-primary-800 rounded-lg p-6 text-white">
-  <div className="flex items-center space-x-6">
-    <div className="w-20 h-20 bg-white bg-opacity-20 rounded-full flex items-center justify-center text-2xl font-bold">
-      {getUserInitials(user?.nom)}
-    </div>
-    <div>
-      <h2 className="text-2xl font-bold">{user?.nom}</h2>
-      <p className="text-primary-100">@{user?.username}</p>
-      {/* Fix: Handle role being an object */}
-      <p className="text-primary-200">
-        {typeof user?.role === 'object' ? user.role?.nom : user?.role || 'Rôle non défini'}
-      </p>
-    </div>
-  </div>
-</div>
+        <div className="flex items-center space-x-6">
+          <div className="w-20 h-20 bg-white bg-opacity-20 rounded-full flex items-center justify-center text-2xl font-bold">
+            {getUserInitials(user?.nom)}
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold">{user?.nom}</h2>
+            <p className="text-primary-100">@{user?.username}</p>
+            <p className="text-primary-200">{getRoleName(user?.role)}</p>
+          </div>
+        </div>
+      </div>
       
       {/* Profile Form */}
       <div className="bg-white rounded-lg shadow-sm border">
@@ -191,19 +198,19 @@ const Profile = () => {
           
           {/* Role (Read-only) */}
           <div>
-  <label className="block text-sm font-medium text-gray-700 mb-2">
-    Rôle
-  </label>
-  <input
-    type="text"
-    disabled
-    className="form-input block w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-500"
-    value={typeof user?.role === 'object' ? user.role?.nom : user?.role || ''}
-  />
-  <p className="mt-1 text-sm text-gray-500">
-    Le rôle est géré par les administrateurs
-  </p>
-</div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Rôle
+            </label>
+            <input
+              type="text"
+              disabled
+              className="form-input block w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-500"
+              value={getRoleName(user?.role)}
+            />
+            <p className="mt-1 text-sm text-gray-500">
+              Le rôle est géré par les administrateurs
+            </p>
+          </div>
           
           {/* Permissions (Read-only) */}
           <div>

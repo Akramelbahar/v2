@@ -15,7 +15,7 @@ const verifyToken = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
-    // Find user with role and permissions
+    // Find user and attach to request
     const user = await User.findByPk(decoded.id, {
       attributes: { exclude: ['password'] },
       include: [{
@@ -23,9 +23,7 @@ const verifyToken = async (req, res, next) => {
         as: 'role',
         include: [{
           model: Permission,
-          as: 'permissions',
-          attributes: ['id', 'module', 'action', 'description'],
-          through: { attributes: [] }
+          as: 'permissions'
         }]
       }]
     });
@@ -37,12 +35,8 @@ const verifyToken = async (req, res, next) => {
       });
     }
     
-    // Attach user data to request
     req.user = user;
     req.userId = user.id;
-    req.userRole = user.role?.nom;
-    req.userPermissions = user.role?.permissions?.map(p => `${p.module}:${p.action}`) || [];
-    
     next();
   } catch (error) {
     if (error.name === 'JsonWebTokenError') {
@@ -65,8 +59,8 @@ const verifyToken = async (req, res, next) => {
   }
 };
 
-// Check if user has required role
-const checkRole = (...roles) => {
+// Check if user has required role(s) - accepts multiple role names
+const checkRole = (...allowedRoles) => {
   return async (req, res, next) => {
     try {
       if (!req.user) {
@@ -76,14 +70,25 @@ const checkRole = (...roles) => {
         });
       }
 
-      const userRole = req.userRole;
-      
-      if (!userRole || !roles.includes(userRole)) {
+      // Get user with role if not already loaded
+      let userWithRole = req.user;
+      if (!userWithRole.role) {
+        userWithRole = await User.findByPk(req.user.id, {
+          include: [{
+            model: Role,
+            as: 'role'
+          }]
+        });
+      }
+
+      // Check if user has any of the allowed roles
+      const userRole = userWithRole.role?.nom;
+      const hasPermission = allowedRoles.includes(userRole);
+
+      if (!hasPermission) {
         return res.status(403).json({
           success: false,
-          message: 'Access denied. Insufficient permissions.',
-          required: roles,
-          current: userRole
+          message: `Access denied. Required roles: ${allowedRoles.join(', ')}. Your role: ${userRole || 'None'}`
         });
       }
 
@@ -98,7 +103,7 @@ const checkRole = (...roles) => {
   };
 };
 
-// Check if user has required permission
+// Check if user has specific permission
 const checkPermission = (requiredPermission) => {
   return async (req, res, next) => {
     try {
@@ -109,65 +114,36 @@ const checkPermission = (requiredPermission) => {
         });
       }
 
-      const userRole = req.userRole;
-      const userPermissions = req.userPermissions;
+      // Get user with role and permissions if not already loaded
+      let userWithRole = req.user;
+      if (!userWithRole.role || !userWithRole.role.permissions) {
+        userWithRole = await User.findByPk(req.user.id, {
+          include: [{
+            model: Role,
+            as: 'role',
+            include: [{
+              model: Permission,
+              as: 'permissions'
+            }]
+          }]
+        });
+      }
 
-      // Admin users have all permissions
-      if (userRole === 'Admin' || userRole === 'Administrateur') {
+      // Admin has all permissions
+      if (userWithRole.role?.nom === 'Administrateur') {
         return next();
       }
 
       // Check if user has the required permission
-      if (!userPermissions.includes(requiredPermission)) {
-        return res.status(403).json({
-          success: false,
-          message: 'Access denied. Permission required.',
-          required: requiredPermission,
-          current: userPermissions
-        });
-      }
-
-      next();
-    } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: 'Permission verification failed.',
-        error: error.message
-      });
-    }
-  };
-};
-
-// Check if user has any of the required permissions
-const checkAnyPermission = (...permissions) => {
-  return async (req, res, next) => {
-    try {
-      if (!req.user) {
-        return res.status(401).json({
-          success: false,
-          message: 'User not authenticated.'
-        });
-      }
-
-      const userRole = req.userRole;
-      const userPermissions = req.userPermissions;
-
-      // Admin users have all permissions
-      if (userRole === 'Admin' || userRole === 'Administrateur') {
-        return next();
-      }
-
-      // Check if user has any of the required permissions
+      const permissions = userWithRole.role?.permissions || [];
       const hasPermission = permissions.some(permission => 
-        userPermissions.includes(permission)
+        `${permission.module}:${permission.action}` === requiredPermission
       );
 
       if (!hasPermission) {
         return res.status(403).json({
           success: false,
-          message: 'Access denied. One of these permissions is required.',
-          required: permissions,
-          current: userPermissions
+          message: `Access denied. Required permission: ${requiredPermission}`
         });
       }
 
@@ -190,25 +166,10 @@ const optionalAuth = async (req, res, next) => {
     if (token) {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const user = await User.findByPk(decoded.id, {
-        attributes: { exclude: ['password'] },
-        include: [{
-          model: Role,
-          as: 'role',
-          include: [{
-            model: Permission,
-            as: 'permissions',
-            attributes: ['id', 'module', 'action', 'description'],
-            through: { attributes: [] }
-          }]
-        }]
+        attributes: { exclude: ['password'] }
       });
-      
-      if (user) {
-        req.user = user;
-        req.userId = user.id;
-        req.userRole = user.role?.nom;
-        req.userPermissions = user.role?.permissions?.map(p => `${p.module}:${p.action}`) || [];
-      }
+      req.user = user;
+      req.userId = user?.id;
     }
     
     next();
@@ -222,6 +183,5 @@ module.exports = {
   verifyToken,
   checkRole,
   checkPermission,
-  checkAnyPermission,
   optionalAuth
 };
