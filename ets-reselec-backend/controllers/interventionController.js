@@ -13,6 +13,17 @@ const {
 } = require('../models');
 const { sendSuccess, sendError, sendPaginatedResponse } = require('../utils/responseUtils');
 
+// Valid status transitions - Fixed logic
+const VALID_STATUS_TRANSITIONS = {
+  'PLANIFIEE': ['EN_ATTENTE_PDR', 'EN_COURS', 'ANNULEE'],
+  'EN_ATTENTE_PDR': ['EN_COURS', 'PLANIFIEE', 'ANNULEE'],
+  'EN_COURS': ['EN_PAUSE', 'TERMINEE', 'ECHEC', 'EN_ATTENTE_PDR'],
+  'EN_PAUSE': ['EN_COURS', 'ANNULEE'],
+  'TERMINEE': [], // Final state - no transitions allowed
+  'ANNULEE': ['PLANIFIEE'], // Allow reactivation
+  'ECHEC': ['PLANIFIEE', 'EN_COURS'] // Allow restart
+};
+
 // GET /api/interventions
 const getAllInterventions = async (req, res) => {
   try {
@@ -180,13 +191,11 @@ const createIntervention = async (req, res) => {
       equipement_id
     }, { transaction });
 
-    // Initialize workflow phases if needed
-    if (statut === 'PLANIFIEE') {
-      await Diagnostic.create({
-        dateCreation: new Date(),
-        intervention_id: intervention.id
-      }, { transaction });
-    }
+    // Initialize workflow phases
+    await Diagnostic.create({
+      dateCreation: new Date(),
+      intervention_id: intervention.id
+    }, { transaction });
 
     await transaction.commit();
 
@@ -206,10 +215,6 @@ const createIntervention = async (req, res) => {
           model: User,
           as: 'creerPar',
           attributes: ['id', 'nom']
-        },
-        {
-          model: Diagnostic,
-          as: 'diagnostic'
         }
       ]
     });
@@ -223,11 +228,47 @@ const createIntervention = async (req, res) => {
   }
 };
 
+// Helper function to get diagnostic with arrays
+const getDiagnosticWithArrays = async (diagnosticId) => {
+  try {
+    const diagnostic = await Diagnostic.findByPk(diagnosticId);
+    if (!diagnostic) return null;
+    
+    const [travailRequis, besoinPDR, chargesRealisees] = await Promise.all([
+      sequelize.query(
+        'SELECT travail FROM Diagnostic_travailRequis WHERE diagnostic_id = ? ORDER BY id',
+        { replacements: [diagnosticId], type: sequelize.QueryTypes.SELECT }
+      ),
+      sequelize.query(
+        'SELECT besoin FROM Diagnostic_besoinPDR WHERE diagnostic_id = ? ORDER BY id',
+        { replacements: [diagnosticId], type: sequelize.QueryTypes.SELECT }
+      ),
+      sequelize.query(
+        'SELECT charge FROM Diagnostic_chargesRealisees WHERE diagnostic_id = ? ORDER BY id',
+        { replacements: [diagnosticId], type: sequelize.QueryTypes.SELECT }
+      )
+    ]);
+
+    return {
+      ...diagnostic.toJSON(),
+      travailRequis: travailRequis.map(t => t.travail).filter(Boolean),
+      besoinPDR: besoinPDR.map(b => b.besoin).filter(Boolean),
+      chargesRealisees: chargesRealisees.map(c => c.charge).filter(Boolean)
+    };
+  } catch (error) {
+    console.error('Error getting diagnostic with arrays:', error);
+    return null;
+  }
+};
+
 // POST /api/interventions/:id/diagnostic
 const createOrUpdateDiagnostic = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      await transaction.rollback();
       return sendError(res, 'Validation failed', 400, errors.array());
     }
 
@@ -236,6 +277,7 @@ const createOrUpdateDiagnostic = async (req, res) => {
 
     const intervention = await Intervention.findByPk(id);
     if (!intervention) {
+      await transaction.rollback();
       return sendError(res, 'Intervention not found', 404);
     }
 
@@ -248,60 +290,81 @@ const createOrUpdateDiagnostic = async (req, res) => {
       diagnostic = await Diagnostic.create({
         dateCreation: new Date(),
         intervention_id: id
-      });
+      }, { transaction });
     }
 
-    // Update diagnostic arrays (using raw SQL for simplicity)
-    if (travailRequis.length > 0) {
-      await sequelize.query(
+    // Clear existing arrays
+    await Promise.all([
+      sequelize.query(
         'DELETE FROM Diagnostic_travailRequis WHERE diagnostic_id = ?',
-        { replacements: [diagnostic.id] }
-      );
-      
-      for (const travail of travailRequis) {
-        await sequelize.query(
-          'INSERT INTO Diagnostic_travailRequis (diagnostic_id, travail) VALUES (?, ?)',
-          { replacements: [diagnostic.id, travail] }
-        );
-      }
-    }
-
-    if (besoinPDR.length > 0) {
-      await sequelize.query(
+        { replacements: [diagnostic.id], transaction }
+      ),
+      sequelize.query(
         'DELETE FROM Diagnostic_besoinPDR WHERE diagnostic_id = ?',
-        { replacements: [diagnostic.id] }
-      );
-      
-      for (const besoin of besoinPDR) {
-        await sequelize.query(
-          'INSERT INTO Diagnostic_besoinPDR (diagnostic_id, besoin) VALUES (?, ?)',
-          { replacements: [diagnostic.id, besoin] }
-        );
-      }
-    }
-
-    if (chargesRealisees.length > 0) {
-      await sequelize.query(
+        { replacements: [diagnostic.id], transaction }
+      ),
+      sequelize.query(
         'DELETE FROM Diagnostic_chargesRealisees WHERE diagnostic_id = ?',
-        { replacements: [diagnostic.id] }
-      );
-      
-      for (const charge of chargesRealisees) {
-        await sequelize.query(
-          'INSERT INTO Diagnostic_chargesRealisees (diagnostic_id, charge) VALUES (?, ?)',
-          { replacements: [diagnostic.id, charge] }
+        { replacements: [diagnostic.id], transaction }
+      )
+    ]);
+
+    // Insert new data
+    const insertPromises = [];
+
+    // Insert travail requis
+    travailRequis.forEach(travail => {
+      if (travail && travail.trim()) {
+        insertPromises.push(
+          sequelize.query(
+            'INSERT INTO Diagnostic_travailRequis (diagnostic_id, travail) VALUES (?, ?)',
+            { replacements: [diagnostic.id, travail.trim()], transaction }
+          )
         );
       }
+    });
+
+    // Insert besoin PDR
+    besoinPDR.forEach(besoin => {
+      if (besoin && besoin.trim()) {
+        insertPromises.push(
+          sequelize.query(
+            'INSERT INTO Diagnostic_besoinPDR (diagnostic_id, besoin) VALUES (?, ?)',
+            { replacements: [diagnostic.id, besoin.trim()], transaction }
+          )
+        );
+      }
+    });
+
+    // Insert charges realisees
+    chargesRealisees.forEach(charge => {
+      if (charge && charge.trim()) {
+        insertPromises.push(
+          sequelize.query(
+            'INSERT INTO Diagnostic_chargesRealisees (diagnostic_id, charge) VALUES (?, ?)',
+            { replacements: [diagnostic.id, charge.trim()], transaction }
+          )
+        );
+      }
+    });
+
+    await Promise.all(insertPromises);
+
+    // Update intervention status based on diagnostic completion
+    const hasContent = travailRequis.length > 0 || besoinPDR.length > 0 || chargesRealisees.length > 0;
+    if (hasContent && intervention.statut === 'PLANIFIEE') {
+      await intervention.update({ statut: 'EN_ATTENTE_PDR' }, { transaction });
     }
 
-    // Update intervention status
-    if (intervention.statut === 'PLANIFIEE') {
-      await intervention.update({ statut: 'EN_ATTENTE_PDR' });
-    }
+    await transaction.commit();
 
-    sendSuccess(res, diagnostic, 'Diagnostic updated successfully');
+    // Get updated diagnostic with arrays
+    const updatedDiagnostic = await getDiagnosticWithArrays(diagnostic.id);
+    
+    sendSuccess(res, updatedDiagnostic, 'Diagnostic updated successfully');
 
   } catch (error) {
+    await transaction.rollback();
     console.error('Create/update diagnostic error:', error);
     sendError(res, 'Failed to update diagnostic', 500, error.message);
   }
@@ -309,9 +372,12 @@ const createOrUpdateDiagnostic = async (req, res) => {
 
 // PUT /api/interventions/:id/planification
 const updatePlanification = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      await transaction.rollback();
       return sendError(res, 'Validation failed', 400, errors.array());
     }
 
@@ -320,6 +386,7 @@ const updatePlanification = async (req, res) => {
 
     const intervention = await Intervention.findByPk(id);
     if (!intervention) {
+      await transaction.rollback();
       return sendError(res, 'Intervention not found', 404);
     }
 
@@ -332,26 +399,29 @@ const updatePlanification = async (req, res) => {
       planification = await Planification.create({
         dateCreation: new Date(),
         intervention_id: id,
-        capaciteExecution,
-        urgencePrise,
-        disponibilitePDR
-      });
+        capaciteExecution: capaciteExecution || null,
+        urgencePrise: urgencePrise || false,
+        disponibilitePDR: disponibilitePDR || false
+      }, { transaction });
     } else {
       await planification.update({
-        capaciteExecution,
-        urgencePrise,
-        disponibilitePDR
-      });
+        capaciteExecution: capaciteExecution || null,
+        urgencePrise: urgencePrise || false,
+        disponibilitePDR: disponibilitePDR || false
+      }, { transaction });
     }
 
-    // Update intervention status
-    if (intervention.statut === 'EN_ATTENTE_PDR' && disponibilitePDR) {
-      await intervention.update({ statut: 'EN_COURS' });
+    // Update intervention status based on planification
+    if (disponibilitePDR && intervention.statut === 'EN_ATTENTE_PDR') {
+      await intervention.update({ statut: 'EN_COURS' }, { transaction });
     }
+
+    await transaction.commit();
 
     sendSuccess(res, planification, 'Planification updated successfully');
 
   } catch (error) {
+    await transaction.rollback();
     console.error('Update planification error:', error);
     sendError(res, 'Failed to update planification', 500, error.message);
   }
@@ -359,9 +429,12 @@ const updatePlanification = async (req, res) => {
 
 // POST /api/interventions/:id/controle-qualite
 const addControleQualite = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      await transaction.rollback();
       return sendError(res, 'Validation failed', 400, errors.array());
     }
 
@@ -370,6 +443,7 @@ const addControleQualite = async (req, res) => {
 
     const intervention = await Intervention.findByPk(id);
     if (!intervention) {
+      await transaction.rollback();
       return sendError(res, 'Intervention not found', 404);
     }
 
@@ -381,22 +455,25 @@ const addControleQualite = async (req, res) => {
     if (!controleQualite) {
       controleQualite = await ControleQualite.create({
         dateControle: new Date(),
-        resultatsEssais,
-        analyseVibratoire,
+        resultatsEssais: resultatsEssais || '',
+        analyseVibratoire: analyseVibratoire || '',
         intervention_id: id
-      });
+      }, { transaction });
     } else {
       await controleQualite.update({
-        resultatsEssais,
-        analyseVibratoire
-      });
+        resultatsEssais: resultatsEssais || '',
+        analyseVibratoire: analyseVibratoire || ''
+      }, { transaction });
     }
 
-    sendSuccess(res, controleQualite, 'Quality control added successfully', 201);
+    await transaction.commit();
+
+    sendSuccess(res, controleQualite, 'Quality control updated successfully');
 
   } catch (error) {
+    await transaction.rollback();
     console.error('Add quality control error:', error);
-    sendError(res, 'Failed to add quality control', 500, error.message);
+    sendError(res, 'Failed to update quality control', 500, error.message);
   }
 };
 
@@ -416,20 +493,13 @@ const updateInterventionStatus = async (req, res) => {
       return sendError(res, 'Intervention not found', 404);
     }
 
-    // Validate status transition
-    const validTransitions = {
-      'PLANIFIEE': ['EN_ATTENTE_PDR', 'ANNULEE'],
-      'EN_ATTENTE_PDR': ['EN_COURS', 'ANNULEE'],
-      'EN_COURS': ['EN_PAUSE', 'TERMINEE', 'ECHEC'],
-      'EN_PAUSE': ['EN_COURS', 'ANNULEE'],
-      'TERMINEE': [],
-      'ANNULEE': [],
-      'ECHEC': ['EN_COURS']
-    };
+    const currentStatus = intervention.statut;
+    const validTransitions = VALID_STATUS_TRANSITIONS[currentStatus] || [];
 
-    if (!validTransitions[intervention.statut].includes(statut)) {
+    // Check if the transition is valid
+    if (!validTransitions.includes(statut)) {
       return sendError(res, 
-        `Invalid status transition from ${intervention.statut} to ${statut}`, 
+        `Invalid status transition from ${currentStatus} to ${statut}. Valid transitions: ${validTransitions.join(', ')}`, 
         400
       );
     }
@@ -444,7 +514,7 @@ const updateInterventionStatus = async (req, res) => {
   }
 };
 
-// GET /api/interventions/:id/workflow - FIXED VERSION
+// GET /api/interventions/:id/workflow
 const getWorkflowStatus = async (req, res) => {
   try {
     const { id } = req.params;
@@ -453,18 +523,15 @@ const getWorkflowStatus = async (req, res) => {
       include: [
         { 
           model: Diagnostic, 
-          as: 'diagnostic',
-          required: false
+          as: 'diagnostic' 
         },
         { 
           model: Planification, 
-          as: 'planification',
-          required: false
+          as: 'planification' 
         },
         { 
           model: ControleQualite, 
-          as: 'controleQualite',
-          required: false
+          as: 'controleQualite' 
         }
       ]
     });
@@ -473,29 +540,50 @@ const getWorkflowStatus = async (req, res) => {
       return sendError(res, 'Intervention not found', 404);
     }
 
+    // Get diagnostic with arrays if it exists
+    let diagnosticWithArrays = null;
+    if (intervention.diagnostic) {
+      diagnosticWithArrays = await getDiagnosticWithArrays(intervention.diagnostic.id);
+    }
+
     const workflow = {
       intervention: {
         id: intervention.id,
         statut: intervention.statut,
         date: intervention.date,
-        urgence: intervention.urgence
+        urgence: intervention.urgence,
+        diagnostic: diagnosticWithArrays,
+        planification: intervention.planification,
+        controleQualite: intervention.controleQualite
       },
       phases: {
         diagnostic: {
-          completed: !!intervention.diagnostic,
-          dateCreation: intervention.diagnostic?.dateCreation || null
+          completed: !!intervention.diagnostic && (
+            (diagnosticWithArrays?.travailRequis?.length > 0) ||
+            (diagnosticWithArrays?.besoinPDR?.length > 0) ||
+            (diagnosticWithArrays?.chargesRealisees?.length > 0)
+          ),
+          dateCreation: intervention.diagnostic?.dateCreation
         },
         planification: {
-          completed: !!intervention.planification,
-          dateCreation: intervention.planification?.dateCreation || null,
-          disponibilitePDR: intervention.planification?.disponibilitePDR || false
+          completed: !!intervention.planification && (
+            intervention.planification.capaciteExecution !== null ||
+            intervention.planification.urgencePrise ||
+            intervention.planification.disponibilitePDR
+          ),
+          dateCreation: intervention.planification?.dateCreation,
+          disponibilitePDR: intervention.planification?.disponibilitePDR
         },
         controleQualite: {
-          completed: !!intervention.controleQualite,
-          dateControle: intervention.controleQualite?.dateControle || null
+          completed: !!intervention.controleQualite && (
+            (intervention.controleQualite.resultatsEssais && intervention.controleQualite.resultatsEssais.trim()) ||
+            (intervention.controleQualite.analyseVibratoire && intervention.controleQualite.analyseVibratoire.trim())
+          ),
+          dateControle: intervention.controleQualite?.dateControle
         }
       },
-      nextActions: getNextActions(intervention)
+      nextActions: getNextActions(intervention),
+      validStatusTransitions: VALID_STATUS_TRANSITIONS[intervention.statut] || []
     };
 
     sendSuccess(res, workflow);
@@ -520,10 +608,17 @@ const getNextActions = (intervention) => {
     case 'EN_COURS':
       actions.push('Perform maintenance work', 'Add quality control results');
       break;
+    case 'EN_PAUSE':
+      actions.push('Resume intervention');
+      break;
     case 'TERMINEE':
       actions.push('Generate final report');
       break;
-    default:
+    case 'ECHEC':
+      actions.push('Analyze failure causes', 'Plan corrective actions');
+      break;
+    case 'ANNULEE':
+      actions.push('Consider reactivation if needed');
       break;
   }
   
@@ -546,6 +641,14 @@ const getStatusCounts = async (req, res) => {
       acc[item.statut] = parseInt(item.count);
       return acc;
     }, {});
+
+    // Ensure all possible statuses are included
+    const allStatuses = ['PLANIFIEE', 'EN_ATTENTE_PDR', 'EN_COURS', 'EN_PAUSE', 'TERMINEE', 'ANNULEE', 'ECHEC'];
+    allStatuses.forEach(status => {
+      if (!statusCounts[status]) {
+        statusCounts[status] = 0;
+      }
+    });
 
     sendSuccess(res, statusCounts);
 

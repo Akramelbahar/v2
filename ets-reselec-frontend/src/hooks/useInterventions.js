@@ -1,4 +1,4 @@
-// ets-reselec-frontend/src/hooks/useInterventions.js
+import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { interventionService } from '../services/interventionService';
 import toast from 'react-hot-toast';
@@ -6,16 +6,7 @@ import toast from 'react-hot-toast';
 export const useInterventions = (params = {}) => {
   return useQuery({
     queryKey: ['interventions', params],
-    queryFn: () => interventionService.getAll(params).then(res => {
-      if (res.data.success) {
-        return {
-          data: res.data.data,
-          total: res.data.pagination?.total || res.data.data?.length || 0,
-          pagination: res.data.pagination
-        };
-      }
-      return { data: [], total: 0, pagination: null };
-    }),
+    queryFn: () => interventionService.getAll(params).then(res => res.data.data || res.data),
     keepPreviousData: true,
     staleTime: 60000 // 1 minute - interventions change frequently
   });
@@ -24,12 +15,7 @@ export const useInterventions = (params = {}) => {
 export const useIntervention = (id) => {
   return useQuery({
     queryKey: ['intervention', id],
-    queryFn: () => interventionService.getById(id).then(res => {
-      if (res.data.success) {
-        return res.data.data;
-      }
-      throw new Error('Failed to fetch intervention');
-    }),
+    queryFn: () => interventionService.getById(id).then(res => res.data.data),
     enabled: !!id,
     staleTime: 60000
   });
@@ -40,14 +26,12 @@ export const useCreateIntervention = () => {
   
   return useMutation({
     mutationFn: interventionService.create,
-    onSuccess: (response) => {
+    onSuccess: () => {
       queryClient.invalidateQueries(['interventions']);
       queryClient.invalidateQueries(['recent-interventions']);
       queryClient.invalidateQueries(['dashboard-stats']);
       queryClient.invalidateQueries(['dashboard-alerts']);
-      if (response.data.success) {
-        toast.success(response.data.message || 'Intervention créée avec succès');
-      }
+      toast.success('Intervention créée avec succès');
     },
     onError: (error) => {
       const message = error.response?.data?.message || 'Erreur lors de la création de l\'intervention';
@@ -61,13 +45,14 @@ export const useUpdateInterventionStatus = () => {
   
   return useMutation({
     mutationFn: ({ id, status }) => interventionService.updateStatus(id, status),
-    onSuccess: (response) => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries(['interventions']);
+      queryClient.invalidateQueries(['intervention', variables.id]);
+      queryClient.invalidateQueries(['intervention-workflow', variables.id]);
       queryClient.invalidateQueries(['recent-interventions']);
       queryClient.invalidateQueries(['dashboard-stats']);
-      if (response.data.success) {
-        toast.success(response.data.message || 'Statut mis à jour avec succès');
-      }
+      queryClient.invalidateQueries(['dashboard-alerts']);
+      toast.success('Statut mis à jour avec succès');
     },
     onError: (error) => {
       const message = error.response?.data?.message || 'Erreur lors de la mise à jour du statut';
@@ -79,14 +64,11 @@ export const useUpdateInterventionStatus = () => {
 export const useInterventionWorkflow = (id) => {
   return useQuery({
     queryKey: ['intervention-workflow', id],
-    queryFn: () => interventionService.getWorkflow(id).then(res => {
-      if (res.data.success) {
-        return res.data.data;
-      }
-      throw new Error('Failed to fetch workflow');
-    }),
+    queryFn: () => interventionService.getWorkflow(id).then(res => res.data.data),
     enabled: !!id,
-    staleTime: 30000 // 30 seconds
+    staleTime: 30000, // 30 seconds
+    refetchInterval: false, // Don't auto-refetch
+    refetchOnWindowFocus: false
   });
 };
 
@@ -95,12 +77,15 @@ export const useUpdateDiagnostic = () => {
   
   return useMutation({
     mutationFn: ({ id, data }) => interventionService.updateDiagnostic(id, data),
-    onSuccess: (response, variables) => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries(['intervention-workflow', variables.id]);
       queryClient.invalidateQueries(['intervention', variables.id]);
-      if (response.data.success) {
-        toast.success(response.data.message || 'Diagnostic mis à jour avec succès');
-      }
+      queryClient.invalidateQueries(['interventions']);
+      toast.success('Diagnostic mis à jour avec succès');
+    },
+    onError: (error) => {
+      const message = error.response?.data?.message || 'Erreur lors de la mise à jour du diagnostic';
+      toast.error(message);
     }
   });
 };
@@ -110,12 +95,15 @@ export const useUpdatePlanification = () => {
   
   return useMutation({
     mutationFn: ({ id, data }) => interventionService.updatePlanification(id, data),
-    onSuccess: (response, variables) => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries(['intervention-workflow', variables.id]);
       queryClient.invalidateQueries(['intervention', variables.id]);
-      if (response.data.success) {
-        toast.success(response.data.message || 'Planification mise à jour avec succès');
-      }
+      queryClient.invalidateQueries(['interventions']);
+      toast.success('Planification mise à jour avec succès');
+    },
+    onError: (error) => {
+      const message = error.response?.data?.message || 'Erreur lors de la mise à jour de la planification';
+      toast.error(message);
     }
   });
 };
@@ -125,12 +113,158 @@ export const useAddControleQualite = () => {
   
   return useMutation({
     mutationFn: ({ id, data }) => interventionService.addControleQualite(id, data),
-    onSuccess: (response, variables) => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries(['intervention-workflow', variables.id]);
       queryClient.invalidateQueries(['intervention', variables.id]);
-      if (response.data.success) {
-        toast.success(response.data.message || 'Contrôle qualité ajouté avec succès');
-      }
+      queryClient.invalidateQueries(['interventions']);
+      toast.success('Contrôle qualité mis à jour avec succès');
+    },
+    onError: (error) => {
+      const message = error.response?.data?.message || 'Erreur lors de la mise à jour du contrôle qualité';
+      toast.error(message);
     }
   });
+};
+
+// Additional hooks for better workflow management
+export const useUpdateIntervention = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ id, data }) => interventionService.update(id, data),
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries(['interventions']);
+      queryClient.invalidateQueries(['intervention', variables.id]);
+      queryClient.invalidateQueries(['intervention-workflow', variables.id]);
+      toast.success('Intervention modifiée avec succès');
+    },
+    onError: (error) => {
+      const message = error.response?.data?.message || 'Erreur lors de la modification de l\'intervention';
+      toast.error(message);
+    }
+  });
+};
+
+export const useDeleteIntervention = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: interventionService.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries(['interventions']);
+      queryClient.invalidateQueries(['dashboard-stats']);
+      queryClient.invalidateQueries(['recent-interventions']);
+      toast.success('Intervention supprimée avec succès');
+    },
+    onError: (error) => {
+      const message = error.response?.data?.message || 'Erreur lors de la suppression de l\'intervention';
+      toast.error(message);
+    }
+  });
+};
+
+export const useInterventionStatusCounts = () => {
+  return useQuery({
+    queryKey: ['intervention-status-counts'],
+    queryFn: () => interventionService.getStatusCounts().then(res => res.data.data),
+    staleTime: 300000, // 5 minutes
+    refetchInterval: 300000 // Auto-refetch every 5 minutes
+  });
+};
+
+// Bulk operations
+export const useBulkUpdateInterventions = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ ids, updates }) => {
+      const promises = ids.map(id => 
+        interventionService.update(id, updates)
+      );
+      return Promise.all(promises);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['interventions']);
+      queryClient.invalidateQueries(['dashboard-stats']);
+      toast.success('Interventions mises à jour avec succès');
+    },
+    onError: (error) => {
+      toast.error('Erreur lors de la mise à jour des interventions');
+    }
+  });
+};
+
+// Search and filter hooks
+export const useInterventionSearch = (query, filters = {}) => {
+  return useQuery({
+    queryKey: ['intervention-search', query, filters],
+    queryFn: () => interventionService.search(query, filters).then(res => res.data.data),
+    enabled: !!query && query.length >= 2,
+    staleTime: 60000
+  });
+};
+
+export const useInterventionsByEquipment = (equipmentId) => {
+  return useQuery({
+    queryKey: ['interventions-by-equipment', equipmentId],
+    queryFn: () => interventionService.getByEquipment(equipmentId).then(res => res.data.data),
+    enabled: !!equipmentId,
+    staleTime: 300000
+  });
+};
+
+export const useInterventionsByDateRange = (dateFrom, dateTo, filters = {}) => {
+  return useQuery({
+    queryKey: ['interventions-by-date', dateFrom, dateTo, filters],
+    queryFn: () => interventionService.getByDateRange(dateFrom, dateTo, filters).then(res => res.data.data),
+    enabled: !!(dateFrom && dateTo),
+    staleTime: 300000
+  });
+};
+
+// Analytics hooks
+export const useInterventionAnalytics = (timeframe = '30') => {
+  return useQuery({
+    queryKey: ['intervention-analytics', timeframe],
+    queryFn: () => interventionService.getAnalytics(timeframe).then(res => res.data.data),
+    staleTime: 600000, // 10 minutes
+    refetchInterval: 600000
+  });
+};
+
+// Real-time updates helper
+export const useInterventionRealTimeUpdates = (interventionId) => {
+  const queryClient = useQueryClient();
+  
+  React.useEffect(() => {
+    if (!interventionId) return;
+    
+    // Set up polling for real-time updates every 30 seconds
+    const interval = setInterval(() => {
+      queryClient.invalidateQueries(['intervention-workflow', interventionId]);
+      queryClient.invalidateQueries(['intervention', interventionId]);
+    }, 30000);
+    
+    return () => clearInterval(interval);
+  }, [interventionId, queryClient]);
+};
+
+export default {
+  useInterventions,
+  useIntervention,
+  useCreateIntervention,
+  useUpdateInterventionStatus,
+  useInterventionWorkflow,
+  useUpdateDiagnostic,
+  useUpdatePlanification,
+  useAddControleQualite,
+  useUpdateIntervention,
+  useDeleteIntervention,
+  useInterventionStatusCounts,
+  useBulkUpdateInterventions,
+  useInterventionSearch,
+  useInterventionsByEquipment,
+  useInterventionsByDateRange,
+  useInterventionAnalytics,
+  useInterventionRealTimeUpdates
 };
