@@ -1,4 +1,3 @@
-// ets-reselec-frontend/src/context/AuthContext.jsx
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import authService from '../services/authService';
 import toast from 'react-hot-toast';
@@ -180,6 +179,41 @@ export const AuthProvider = ({ children }) => {
     }
   };
   
+  // Update profile function
+  const updateProfile = async (profileData) => {
+    try {
+      const updatedUser = await authService.updateProfile(profileData);
+      
+      dispatch({
+        type: AUTH_ACTIONS.UPDATE_USER,
+        payload: updatedUser
+      });
+      
+      toast.success('Profil mis à jour avec succès');
+      return { success: true, user: updatedUser };
+      
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || error.message || 'Profile update failed';
+      toast.error(errorMessage);
+      return { success: false, error: errorMessage };
+    }
+  };
+  
+  // Change password function
+  const changePassword = async (passwordData) => {
+    try {
+      await authService.changePassword(passwordData);
+      
+      toast.success('Mot de passe modifié avec succès');
+      return { success: true };
+      
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || error.message || 'Password change failed';
+      toast.error(errorMessage);
+      return { success: false, error: errorMessage };
+    }
+  };
+  
   // Logout function
   const logout = async () => {
     try {
@@ -203,20 +237,34 @@ export const AuthProvider = ({ children }) => {
   
   // Permission and role checking functions
   const hasPermission = (permission) => {
-    if (!state.user) return false;
-    
-    // Admin has all permissions
-    if (state.user.role === 'Administrateur') return true;
-    
-    return state.user.permissions?.includes(permission) || false;
+    return authService.hasPermission(permission);
+  };
+  
+  const hasAnyPermission = (permissions) => {
+    return authService.hasAnyPermission(permissions);
   };
   
   const hasRole = (role) => {
-    return state.user?.role === role;
+    const currentRole = authService.getRole();
+    
+    // Handle admin role variants
+    if (role === 'Admin' && (currentRole === 'Admin' || currentRole === 'Administrateur' || currentRole === 'Administrator')) {
+      return true;
+    }
+    
+    return authService.hasRole(role);
   };
   
   const isAdmin = () => {
-    return hasRole('Administrateur') || hasRole('Admin');
+    return authService.isAdmin();
+  };
+  
+  const getPermissions = () => {
+    return authService.getPermissions();
+  };
+  
+  const getRole = () => {
+    return authService.getRole();
   };
   
   // Context value
@@ -231,13 +279,18 @@ export const AuthProvider = ({ children }) => {
     // Actions
     login,
     register,
+    updateProfile,
+    changePassword,
     logout,
     clearError,
     
-    // Authorization
+    // Authorization helpers
     hasPermission,
+    hasAnyPermission,
     hasRole,
-    isAdmin
+    isAdmin,
+    getPermissions,
+    getRole
   };
   
   return (

@@ -12,12 +12,7 @@ const clientRoutes = require('./routes/clients');
 const equipmentRoutes = require('./routes/equipment');
 const interventionRoutes = require('./routes/interventions');
 const dashboardRoutes = require('./routes/dashboard');
-
-const roleRoutes = require('./routes/roles');
-const userRoutes = require('./routes/users');
-
-// Add these lines after existing route usage:
-
+const adminRoutes = require('./routes/admin'); // Add admin routes
 
 const app = express();
 
@@ -52,6 +47,7 @@ app.use('/api/clients', clientRoutes);
 app.use('/api/equipment', equipmentRoutes);
 app.use('/api/interventions', interventionRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/admin', adminRoutes); // Add admin routes
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -63,8 +59,7 @@ app.get('/api/health', (req, res) => {
     environment: process.env.NODE_ENV || 'development'
   });
 });
-app.use('/api/roles', roleRoutes);
-app.use('/api/users', userRoutes);
+
 // API documentation endpoint
 app.get('/api/docs', (req, res) => {
   res.json({
@@ -112,12 +107,29 @@ app.get('/api/docs', (req, res) => {
         'GET /api/dashboard/alerts': 'Get alerts and notifications',
         'GET /api/dashboard/charts': 'Get chart data',
         'GET /api/dashboard/performance': 'Get performance metrics'
+      },
+      administration: {
+        'GET /api/admin/users': 'List users (Admin only)',
+        'GET /api/admin/users/stats': 'Get user statistics (Admin only)',
+        'GET /api/admin/users/:id': 'Get user details (Admin only)',
+        'POST /api/admin/users': 'Create user (Admin only)',
+        'PUT /api/admin/users/:id': 'Update user (Admin only)',
+        'DELETE /api/admin/users/:id': 'Delete user (Admin only)',
+        'PUT /api/admin/users/:id/status': 'Update user status (Admin only)',
+        'GET /api/admin/roles': 'List roles (Admin only)',
+        'GET /api/admin/roles/:id': 'Get role details (Admin only)',
+        'POST /api/admin/roles': 'Create role (Admin only)',
+        'PUT /api/admin/roles/:id': 'Update role (Admin only)',
+        'DELETE /api/admin/roles/:id': 'Delete role (Admin only)',
+        'GET /api/admin/permissions': 'List permissions (Admin only)',
+        'POST /api/admin/permissions': 'Create permission (Admin only)',
+        'PUT /api/admin/permissions/:id': 'Update permission (Admin only)',
+        'DELETE /api/admin/permissions/:id': 'Delete permission (Admin only)'
       }
     }
   });
 });
-const analyticsRoutes = require('./routes/analytics');
-app.use('/api/analytics', analyticsRoutes);
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({
@@ -126,10 +138,7 @@ app.use((req, res) => {
     availableRoutes: '/api/docs'
   });
 });
-const workflowRoutes = require('./routes/workflow');
 
-// Add after existing routes
-app.use('/api/workflow', workflowRoutes);
 // Global error handler
 app.use(errorHandler);
 
@@ -160,6 +169,7 @@ const startServer = async () => {
       console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`📚 API Documentation: http://localhost:${PORT}/api/docs`);
       console.log(`🏥 Health Check: http://localhost:${PORT}/api/health`);
+      console.log(`👑 Admin Routes: http://localhost:${PORT}/api/admin/*`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);

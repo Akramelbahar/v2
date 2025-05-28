@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const { User } = require('../models');
+const { User, Role, Permission } = require('../models');
 
 // Verify JWT token
 const verifyToken = async (req, res, next) => {
@@ -15,9 +15,19 @@ const verifyToken = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
-    // Find user and attach to request
+    // Find user with role and permissions
     const user = await User.findByPk(decoded.id, {
-      attributes: { exclude: ['password'] }
+      attributes: { exclude: ['password'] },
+      include: [{
+        model: Role,
+        as: 'role',
+        include: [{
+          model: Permission,
+          as: 'permissions',
+          attributes: ['id', 'module', 'action', 'description'],
+          through: { attributes: [] }
+        }]
+      }]
     });
     
     if (!user) {
@@ -27,8 +37,12 @@ const verifyToken = async (req, res, next) => {
       });
     }
     
+    // Attach user data to request
     req.user = user;
     req.userId = user.id;
+    req.userRole = user.role?.nom;
+    req.userPermissions = user.role?.permissions?.map(p => `${p.module}:${p.action}`) || [];
+    
     next();
   } catch (error) {
     if (error.name === 'JsonWebTokenError') {
@@ -62,18 +76,14 @@ const checkRole = (...roles) => {
         });
       }
 
-      // Get user with role
-      const userWithRole = await User.findByPk(req.user.id, {
-        include: [{
-          model: sequelize.models.Role,
-          as: 'role'
-        }]
-      });
-
-      if (!userWithRole.role || !roles.includes(userWithRole.role.nom)) {
+      const userRole = req.userRole;
+      
+      if (!userRole || !roles.includes(userRole)) {
         return res.status(403).json({
           success: false,
-          message: 'Access denied. Insufficient permissions.'
+          message: 'Access denied. Insufficient permissions.',
+          required: roles,
+          current: userRole
         });
       }
 
@@ -88,6 +98,90 @@ const checkRole = (...roles) => {
   };
 };
 
+// Check if user has required permission
+const checkPermission = (requiredPermission) => {
+  return async (req, res, next) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({
+          success: false,
+          message: 'User not authenticated.'
+        });
+      }
+
+      const userRole = req.userRole;
+      const userPermissions = req.userPermissions;
+
+      // Admin users have all permissions
+      if (userRole === 'Admin' || userRole === 'Administrateur') {
+        return next();
+      }
+
+      // Check if user has the required permission
+      if (!userPermissions.includes(requiredPermission)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied. Permission required.',
+          required: requiredPermission,
+          current: userPermissions
+        });
+      }
+
+      next();
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: 'Permission verification failed.',
+        error: error.message
+      });
+    }
+  };
+};
+
+// Check if user has any of the required permissions
+const checkAnyPermission = (...permissions) => {
+  return async (req, res, next) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({
+          success: false,
+          message: 'User not authenticated.'
+        });
+      }
+
+      const userRole = req.userRole;
+      const userPermissions = req.userPermissions;
+
+      // Admin users have all permissions
+      if (userRole === 'Admin' || userRole === 'Administrateur') {
+        return next();
+      }
+
+      // Check if user has any of the required permissions
+      const hasPermission = permissions.some(permission => 
+        userPermissions.includes(permission)
+      );
+
+      if (!hasPermission) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied. One of these permissions is required.',
+          required: permissions,
+          current: userPermissions
+        });
+      }
+
+      next();
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: 'Permission verification failed.',
+        error: error.message
+      });
+    }
+  };
+};
+
 // Optional authentication - doesn't fail if no token
 const optionalAuth = async (req, res, next) => {
   try {
@@ -96,10 +190,25 @@ const optionalAuth = async (req, res, next) => {
     if (token) {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const user = await User.findByPk(decoded.id, {
-        attributes: { exclude: ['password'] }
+        attributes: { exclude: ['password'] },
+        include: [{
+          model: Role,
+          as: 'role',
+          include: [{
+            model: Permission,
+            as: 'permissions',
+            attributes: ['id', 'module', 'action', 'description'],
+            through: { attributes: [] }
+          }]
+        }]
       });
-      req.user = user;
-      req.userId = user?.id;
+      
+      if (user) {
+        req.user = user;
+        req.userId = user.id;
+        req.userRole = user.role?.nom;
+        req.userPermissions = user.role?.permissions?.map(p => `${p.module}:${p.action}`) || [];
+      }
     }
     
     next();
@@ -112,5 +221,7 @@ const optionalAuth = async (req, res, next) => {
 module.exports = {
   verifyToken,
   checkRole,
+  checkPermission,
+  checkAnyPermission,
   optionalAuth
 };

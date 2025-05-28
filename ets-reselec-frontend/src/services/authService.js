@@ -1,16 +1,17 @@
 import api, { tokenStorage } from './api';
-// Fix in ets-reselec-frontend/src/services/authService.js
 
 class AuthService {
-  // Normalize user data to handle role objects
+  // Normalize user data to ensure consistent structure
   _normalizeUserData(user) {
     if (!user) return null;
     
     return {
-      ...user,
-      // If role is an object, extract the name; otherwise keep as is
-      role: typeof user.role === 'object' ? user.role?.nom || user.role?.name : user.role,
-      // Ensure permissions is always an array
+      id: user.id,
+      nom: user.nom,
+      username: user.username,
+      section: user.section,
+      role: user.role, // Keep as string
+      roleId: user.roleId,
       permissions: Array.isArray(user.permissions) ? user.permissions : []
     };
   }
@@ -26,10 +27,8 @@ class AuthService {
         // Normalize user data
         const normalizedUser = this._normalizeUserData(user);
         
-        // Store tokens
+        // Store tokens and user data
         tokenStorage.set(token);
-        
-        // Store user data
         localStorage.setItem('user_data', JSON.stringify(normalizedUser));
         
         return { user: normalizedUser, token };
@@ -53,10 +52,8 @@ class AuthService {
         // Normalize user data
         const normalizedUser = this._normalizeUserData(user);
         
-        // Store tokens
+        // Store tokens and user data
         tokenStorage.set(token);
-        
-        // Store user data
         localStorage.setItem('user_data', JSON.stringify(normalizedUser));
         
         return { user: normalizedUser, token };
@@ -154,9 +151,8 @@ class AuthService {
       token: null
     };
   }
-
-  // ... rest of the methods remain the same
   
+  // Logout user
   async logout() {
     try {
       await api.post('/auth/logout');
@@ -167,6 +163,7 @@ class AuthService {
     }
   }
   
+  // Change password
   async changePassword(passwordData) {
     try {
       const response = await api.put('/auth/profile', passwordData);
@@ -182,6 +179,7 @@ class AuthService {
     }
   }
   
+  // Refresh token
   async refreshToken() {
     try {
       const currentToken = tokenStorage.get();
@@ -195,9 +193,18 @@ class AuthService {
       });
       
       if (response.data.success && response.data.data.token) {
-        const newToken = response.data.data.token;
-        tokenStorage.set(newToken);
-        return newToken;
+        const { token, user } = response.data.data;
+        
+        // Store new token
+        tokenStorage.set(token);
+        
+        // Update user data if provided
+        if (user) {
+          const normalizedUser = this._normalizeUserData(user);
+          localStorage.setItem('user_data', JSON.stringify(normalizedUser));
+        }
+        
+        return token;
       }
       
       throw new Error('Token refresh failed');
@@ -207,36 +214,67 @@ class AuthService {
     }
   }
   
+  // Check if user is authenticated
   isAuthenticated() {
     const token = tokenStorage.get();
     const userData = localStorage.getItem('user_data');
-    return !!(token && userData);
+    return !!(token && userData && !this.isTokenExpired());
   }
   
+  // Check if user has specific permission
   hasPermission(permission) {
     const user = this.getCurrentUser();
     
-    if (!user || !user.permissions) {
+    if (!user) {
       return false;
     }
     
-    if (user.role === 'Administrateur') {
+    // Admin users have all permissions
+    if (this.isAdmin()) {
       return true;
     }
     
-    return user.permissions.includes(permission);
+    return user.permissions && user.permissions.includes(permission);
   }
   
+  // Check if user has specific role
   hasRole(role) {
     const user = this.getCurrentUser();
     return user && user.role === role;
   }
   
+  // Check if user is admin
+  isAdmin() {
+    const user = this.getCurrentUser();
+  return user && (
+    user.role === 'Admin' || 
+    user.role === 'Administrateur' || 
+    user.role === 'Administrator'
+  );
+  }
+  
+  // Check if user has any of the provided permissions
+  hasAnyPermission(permissions) {
+    if (!Array.isArray(permissions)) {
+      return this.hasPermission(permissions);
+    }
+    
+    return permissions.some(permission => this.hasPermission(permission));
+  }
+  
+  // Get user permissions
   getPermissions() {
     const user = this.getCurrentUser();
     return user ? user.permissions || [] : [];
   }
   
+  // Get user role
+  getRole() {
+    const user = this.getCurrentUser();
+    return user ? user.role : null;
+  }
+  
+  // Check if token is expired
   isTokenExpired() {
     const token = tokenStorage.get();
     
