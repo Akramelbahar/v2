@@ -126,7 +126,10 @@ app.use((req, res) => {
     availableRoutes: '/api/docs'
   });
 });
+const workflowRoutes = require('./routes/workflow');
 
+// Add after existing routes
+app.use('/api/workflow', workflowRoutes);
 // Global error handler
 app.use(errorHandler);
 

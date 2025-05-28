@@ -57,4 +57,12 @@ export const interventionService = {
     })
 };
 
+import { workflowService } from './workflowService';
+
+// Enhance existing intervention data
+export const getInterventionWithWorkflow = async (id) => {
+  const intervention = await interventionService.getById(id);
+  return workflowService.enrichInterventionData(intervention.data);
+};
+
 export default interventionService;

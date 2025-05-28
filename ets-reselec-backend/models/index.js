@@ -112,6 +112,22 @@ try {
 } catch (error) {
   console.error('❌ Error setting up model associations:', error);
 }
+// ets-reselec-backend/models/index.js
+const { 
+  StatusHistory,
+  WorkflowTemplate,
+  EnhancedDiagnostic,
+  DiagnosticTravail,
+  DiagnosticPDR,
+  EnhancedPlanification,
+  PlanificationRessource,
+  EnhancedControleQualite,
+  ControleQualiteTest,
+  EnhancedIntervention,
+  defineAssociations
+} = require('./EnhancedModels');
+
+
 
 // Export all models and sequelize instance
 module.exports = {
@@ -131,5 +147,9 @@ module.exports = {
   Rapport,
   Renovation,
   Maintenance,
-  GestionAdministrative
+  GestionAdministrative , StatusHistory,
+  WorkflowTemplate,
+  init: () => {
+    defineAssociations();
+  }
 };
