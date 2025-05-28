@@ -1,4 +1,3 @@
-// ets-reselec-backend/controllers/authController.js - FIXED VERSION
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { validationResult } = require('express-validator');
@@ -9,7 +8,7 @@ const { sendSuccess, sendError } = require('../utils/responseUtils');
 const generateToken = (userId) => {
   return jwt.sign(
     { id: userId },
-    process.env.JWT_SECRET || 'your-fallback-secret-key',
+    process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRE || '7d' }
   );
 };
@@ -17,91 +16,72 @@ const generateToken = (userId) => {
 // POST /api/auth/login
 const login = async (req, res) => {
   try {
-    console.log('🔍 Login attempt:', { username: req.body.username });
-    
     // Check validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      console.log('❌ Validation errors:', errors.array());
       return sendError(res, 'Validation failed', 400, errors.array());
     }
 
     const { username, password } = req.body;
 
-    // Log the search attempt
-    console.log('🔍 Searching for user:', username);
+    console.log('Login attempt for username:', username); // Debug log
 
-    // Find user by username with role and permissions
+    // Find user by username
     const user = await User.findOne({ 
-      where: { username },
+      where: { username: username.toLowerCase().trim() }, // Normalize username
       include: [{
         model: Role,
         as: 'role',
         include: [{
           model: Permission,
           as: 'permissions',
-          attributes: ['module', 'action'],
-          through: { attributes: [] } // Don't include junction table attributes
+          attributes: ['module', 'action']
         }]
       }]
     });
 
-    console.log('🔍 User found:', user ? `Yes (ID: ${user.id})` : 'No');
+    console.log('User found:', user ? 'Yes' : 'No'); // Debug log
 
     if (!user) {
-      console.log('❌ User not found for username:', username);
+      console.log('User not found for username:', username);
       return sendError(res, 'Invalid credentials', 401);
     }
-
-    console.log('🔍 User details:', {
-      id: user.id,
-      nom: user.nom,
-      username: user.username,
-      role_id: user.role_id,
-      role_name: user.role?.nom,
-      password_length: user.password?.length,
-      password_starts_with: user.password?.substring(0, 10)
-    });
 
     // Check password
-    console.log('🔐 Testing password...');
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    console.log('🔐 Password valid:', isPasswordValid);
+    console.log('Checking password...'); // Debug log
+    const isPasswordValid = await user.comparePassword(password);
+    console.log('Password valid:', isPasswordValid); // Debug log
 
     if (!isPasswordValid) {
-      console.log('❌ Invalid password for user:', username);
+      console.log('Invalid password for user:', username);
       return sendError(res, 'Invalid credentials', 401);
     }
 
-    console.log('✅ Password valid, generating token...');
-
-    // Generate token
-    const token = generateToken(user.id);
-    console.log('✅ Token generated');
+    // Generate token using the instance method
+    const token = user.generateToken();
+    console.log('Token generated successfully'); // Debug log
 
     // Format permissions
     const permissions = user.role?.permissions?.map(p => `${p.module}:${p.action}`) || [];
-    console.log('📋 User permissions:', permissions.length, 'permissions found');
 
-    // Prepare user data for response
-    const userData = {
-      id: user.id,
-      nom: user.nom,
-      username: user.username,
-      section: user.section,
-      role: user.role?.nom || null,
-      permissions
+    // Prepare response data
+    const responseData = {
+      token,
+      user: {
+        id: user.id,
+        nom: user.nom,
+        username: user.username,
+        section: user.section,
+        role: user.role?.nom || null,
+        permissions
+      }
     };
 
-    console.log('✅ Login successful for user:', username);
-
-    sendSuccess(res, {
-      token,
-      user: userData
-    }, 'Login successful');
+    console.log('Login successful for user:', username); // Debug log
+    sendSuccess(res, responseData, 'Login successful');
 
   } catch (error) {
-    console.error('❌ Login error:', error);
+    console.error('Login error:', error);
     sendError(res, 'Login failed', 500, error.message);
   }
 };
@@ -109,8 +89,6 @@ const login = async (req, res) => {
 // POST /api/auth/register
 const register = async (req, res) => {
   try {
-    console.log('🔍 Registration attempt:', { username: req.body.username });
-
     // Check validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -120,7 +98,10 @@ const register = async (req, res) => {
     const { nom, username, password, section, role_id } = req.body;
 
     // Check if user already exists
-    const existingUser = await User.findOne({ where: { username } });
+    const existingUser = await User.findOne({ 
+      where: { username: username.toLowerCase().trim() } 
+    });
+    
     if (existingUser) {
       return sendError(res, 'Username already exists', 400);
     }
@@ -133,11 +114,11 @@ const register = async (req, res) => {
       }
     }
 
-    // Create user - password will be hashed by User model hook
+    // Create user
     const user = await User.create({
       nom,
-      username,
-      password, // This will be hashed by the beforeCreate hook in User model
+      username: username.toLowerCase().trim(),
+      password,
       section,
       role_id: role_id || 1 // Default to basic role
     });
@@ -153,9 +134,7 @@ const register = async (req, res) => {
     });
 
     // Generate token
-    const token = generateToken(user.id);
-
-    console.log('✅ User registration successful:', username);
+    const token = user.generateToken();
 
     sendSuccess(res, {
       token,
@@ -163,7 +142,7 @@ const register = async (req, res) => {
     }, 'User registered successfully', 201);
 
   } catch (error) {
-    console.error('❌ Registration error:', error);
+    console.error('Registration error:', error);
     sendError(res, 'Registration failed', 500, error.message);
   }
 };
@@ -179,8 +158,7 @@ const getProfile = async (req, res) => {
         include: [{
           model: Permission,
           as: 'permissions',
-          attributes: ['id', 'module', 'action', 'description'],
-          through: { attributes: [] }
+          attributes: ['id', 'module', 'action', 'description']
         }]
       }]
     });
@@ -232,11 +210,11 @@ const updateProfile = async (req, res) => {
     
     // Handle password change
     if (currentPassword && newPassword) {
-      const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+      const isPasswordValid = await user.comparePassword(currentPassword);
       if (!isPasswordValid) {
         return sendError(res, 'Current password is incorrect', 401);
       }
-      user.password = newPassword; // Will be hashed by model hook
+      user.password = newPassword;
     }
     
     await user.save();
@@ -268,7 +246,7 @@ const refreshToken = async (req, res) => {
     }
 
     // Verify the token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-fallback-secret-key');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
     // Generate new token
     const newToken = generateToken(decoded.id);
