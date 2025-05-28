@@ -557,15 +557,43 @@ const updateInterventionStatus = async (req, res) => {
 };
 
 // GET /api/interventions/:id/workflow
+// GET /api/interventions/:id/workflow
 const getWorkflowStatus = async (req, res) => {
   try {
     const { id } = req.params;
 
     const intervention = await Intervention.findByPk(id, {
       include: [
-        { model: Diagnostic, as: 'diagnostic' },
-        { model: Planification, as: 'planification' },
-        { model: ControleQualite, as: 'controleQualite' }
+        { 
+          model: Diagnostic, 
+          as: 'diagnostic',
+          required: false // LEFT JOIN instead of INNER JOIN
+        },
+        { 
+          model: Planification, 
+          as: 'planification',
+          required: false
+        },
+        { 
+          model: ControleQualite, 
+          as: 'controleQualite',
+          required: false
+        },
+        {
+          model: Equipment,
+          as: 'equipement',
+          attributes: ['id', 'nom', 'marque', 'modele'],
+          include: [{
+            model: Client,
+            as: 'proprietaire',
+            attributes: ['id', 'nom_entreprise']
+          }]
+        },
+        {
+          model: User,
+          as: 'creerPar',
+          attributes: ['id', 'nom']
+        }
       ]
     });
 
@@ -573,77 +601,64 @@ const getWorkflowStatus = async (req, res) => {
       return sendError(res, 'Intervention not found', 404);
     }
 
-    // Fetch diagnostic arrays if diagnostic exists
-    let diagnosticData = null;
-    if (intervention.diagnostic) {
-      try {
-        const [travailRequis, besoinPDR, chargesRealisees] = await Promise.all([
-          sequelize.query(
-            'SELECT travail FROM Diagnostic_travailRequis WHERE diagnostic_id = ?',
-            { replacements: [intervention.diagnostic.id], type: sequelize.QueryTypes.SELECT }
-          ),
-          sequelize.query(
-            'SELECT besoin FROM Diagnostic_besoinPDR WHERE diagnostic_id = ?',
-            { replacements: [intervention.diagnostic.id], type: sequelize.QueryTypes.SELECT }
-          ),
-          sequelize.query(
-            'SELECT charge FROM Diagnostic_chargesRealisees WHERE diagnostic_id = ?',
-            { replacements: [intervention.diagnostic.id], type: sequelize.QueryTypes.SELECT }
-          )
-        ]);
+    // Dynamically determine phase completion based on actual data and business rules
+    const diagnostic = intervention.diagnostic;
+    const planification = intervention.planification;
+    const controleQualite = intervention.controleQualite;
 
-        diagnosticData = {
-          ...intervention.diagnostic.toJSON(),
-          travailRequis: travailRequis.map(t => t.travail),
-          besoinPDR: besoinPDR.map(b => b.besoin),
-          chargesRealisees: chargesRealisees.map(c => c.charge)
-        };
-      } catch (diagError) {
-        console.error('Error fetching diagnostic arrays:', diagError);
-        diagnosticData = {
-          ...intervention.diagnostic.toJSON(),
-          travailRequis: [],
-          besoinPDR: [],
-          chargesRealisees: []
-        };
-      }
-    }
-
-    // Return proper workflow structure
+    // Enhanced workflow with real-time status determination
     const workflow = {
       intervention: {
         id: intervention.id,
         statut: intervention.statut,
         date: intervention.date,
-        urgence: intervention.urgence
+        urgence: intervention.urgence,
+        description: intervention.description,
+        equipement: intervention.equipement,
+        creerPar: intervention.creerPar
       },
       phases: {
         diagnostic: {
-          completed: !!intervention.diagnostic,
-          dateCreation: intervention.diagnostic?.dateCreation,
-          data: diagnosticData
+          completed: diagnostic ? isDiagnosticComplete(diagnostic) : false,
+          dateCreation: diagnostic?.dateCreation,
+          data: diagnostic ? {
+            id: diagnostic.id,
+            // Add any additional diagnostic fields you need
+            travailRequis: await getDiagnosticTravailRequis(diagnostic.id),
+            besoinPDR: await getDiagnosticBesoinPDR(diagnostic.id),
+            chargesRealisees: await getDiagnosticChargesRealisees(diagnostic.id)
+          } : null,
+          canEdit: canEditPhase('diagnostic', intervention.statut),
+          isRequired: true
         },
         planification: {
-          completed: !!intervention.planification,
-          dateCreation: intervention.planification?.dateCreation,
-          data: intervention.planification ? {
-            ...intervention.planification.toJSON(),
-            capaciteExecution: intervention.planification.capaciteExecution,
-            urgencePrise: intervention.planification.urgencePrise,
-            disponibilitePDR: intervention.planification.disponibilitePDR
-          } : null
+          completed: planification ? isPlanificationComplete(planification, intervention.statut) : false,
+          dateCreation: planification?.dateCreation,
+          data: planification ? {
+            id: planification.id,
+            capaciteExecution: planification.capaciteExecution,
+            urgencePrise: planification.urgencePrise,
+            disponibilitePDR: planification.disponibilitePDR
+          } : null,
+          canEdit: canEditPhase('planification', intervention.statut),
+          isRequired: diagnostic?.completed || intervention.statut !== 'PLANIFIEE'
         },
         controleQualite: {
-          completed: !!intervention.controleQualite,
-          dateControle: intervention.controleQualite?.dateControle,
-          data: intervention.controleQualite ? {
-            ...intervention.controleQualite.toJSON(),
-            resultatsEssais: intervention.controleQualite.resultatsEssais,
-            analyseVibratoire: intervention.controleQualite.analyseVibratoire
-          } : null
+          completed: controleQualite ? isControleQualiteComplete(controleQualite) : false,
+          dateControle: controleQualite?.dateControle,
+          data: controleQualite ? {
+            id: controleQualite.id,
+            resultatsEssais: controleQualite.resultatsEssais,
+            analyseVibratoire: controleQualite.analyseVibratoire
+          } : null,
+          canEdit: canEditPhase('controleQualite', intervention.statut),
+          isRequired: intervention.statut === 'EN_COURS' || intervention.statut === 'TERMINEE'
         }
       },
-      nextActions: getNextActions(intervention)
+      progress: calculateProgress(intervention, diagnostic, planification, controleQualite),
+      nextActions: getNextActions(intervention, diagnostic, planification, controleQualite),
+      timeline: await getWorkflowTimeline(id),
+      canAdvance: canAdvanceWorkflow(intervention, diagnostic, planification, controleQualite)
     };
 
     sendSuccess(res, workflow);
@@ -654,36 +669,236 @@ const getWorkflowStatus = async (req, res) => {
   }
 };
 
-// Helper function to determine next actions
-const getNextActions = (intervention) => {
+// Helper functions for dynamic workflow determination
+const isDiagnosticComplete = (diagnostic) => {
+  if (!diagnostic) return false;
+  
+  // Add your business logic here
+  // For example, diagnostic is complete if it has required fields
+  return diagnostic.dateCreation !== null;
+};
+
+const isPlanificationComplete = (planification, interventionStatus) => {
+  if (!planification) return false;
+  
+  // Business logic: planification complete if resources are allocated
+  return planification.disponibilitePDR === true && 
+         planification.capaciteExecution !== null;
+};
+
+const isControleQualiteComplete = (controleQualite) => {
+  if (!controleQualite) return false;
+  
+  // Business logic: quality control complete if both tests are done
+  return controleQualite.resultatsEssais !== null || 
+         controleQualite.analyseVibratoire !== null;
+};
+
+const canEditPhase = (phase, interventionStatus) => {
+  // Define when each phase can be edited based on intervention status
+  const editPermissions = {
+    diagnostic: ['PLANIFIEE', 'EN_ATTENTE_PDR'],
+    planification: ['EN_ATTENTE_PDR', 'EN_COURS'],
+    controleQualite: ['EN_COURS', 'TERMINEE']
+  };
+  
+  return editPermissions[phase]?.includes(interventionStatus) || false;
+};
+
+const calculateProgress = (intervention, diagnostic, planification, controleQualite) => {
+  let completedPhases = 0;
+  let totalPhases = 1; // Always at least intervention creation
+  
+  if (diagnostic) {
+    totalPhases++;
+    if (isDiagnosticComplete(diagnostic)) completedPhases++;
+  }
+  
+  if (planification) {
+    totalPhases++;
+    if (isPlanificationComplete(planification, intervention.statut)) completedPhases++;
+  }
+  
+  if (controleQualite) {
+    totalPhases++;
+    if (isControleQualiteComplete(controleQualite)) completedPhases++;
+  }
+  
+  if (intervention.statut === 'TERMINEE') completedPhases = totalPhases;
+  
+  return {
+    completed: completedPhases,
+    total: totalPhases,
+    percentage: Math.round((completedPhases / totalPhases) * 100)
+  };
+};
+
+// Updated next actions function with more dynamic logic
+const getNextActions = (intervention, diagnostic, planification, controleQualite) => {
   const actions = [];
   
   switch (intervention.statut) {
     case 'PLANIFIEE':
-      actions.push('Complete diagnostic phase');
+      if (!diagnostic) {
+        actions.push('Créer le diagnostic initial');
+      } else if (!isDiagnosticComplete(diagnostic)) {
+        actions.push('Compléter le diagnostic');
+      } else {
+        actions.push('Passer en attente de pièces détachées');
+      }
       break;
+      
     case 'EN_ATTENTE_PDR':
-      actions.push('Update planning and resource availability');
+      if (!planification) {
+        actions.push('Planifier les ressources et la disponibilité');
+      } else if (!isPlanificationComplete(planification, intervention.statut)) {
+        actions.push('Finaliser la planification');
+      } else {
+        actions.push('Démarrer l\'intervention');
+      }
       break;
+      
     case 'EN_COURS':
-      actions.push('Perform maintenance work', 'Add quality control results');
+      if (!controleQualite) {
+        actions.push('Effectuer le contrôle qualité');
+      } else if (!isControleQualiteComplete(controleQualite)) {
+        actions.push('Compléter les tests de qualité');
+      } else {
+        actions.push('Finaliser l\'intervention');
+      }
       break;
+      
     case 'EN_PAUSE':
-      actions.push('Resume intervention');
+      actions.push('Reprendre l\'intervention');
+      actions.push('Analyser la cause de la pause');
       break;
+      
     case 'TERMINEE':
-      actions.push('Generate final report');
+      actions.push('Générer le rapport final');
+      actions.push('Archiver l\'intervention');
       break;
+      
     case 'ECHEC':
-      actions.push('Analyze failure causes', 'Plan corrective actions');
+      actions.push('Analyser les causes d\'échec');
+      actions.push('Replanifier si nécessaire');
       break;
+      
     case 'ANNULEE':
-      actions.push('Consider reactivation if needed');
+      actions.push('Documenter les raisons d\'annulation');
       break;
+  }
+  
+  // Add common actions based on urgency
+  if (intervention.urgence && intervention.statut !== 'TERMINEE') {
+    actions.unshift('⚠️ Intervention urgente - Priorité élevée');
   }
   
   return actions;
 };
+
+const canAdvanceWorkflow = (intervention, diagnostic, planification, controleQualite) => {
+  switch (intervention.statut) {
+    case 'PLANIFIEE':
+      return diagnostic && isDiagnosticComplete(diagnostic);
+    case 'EN_ATTENTE_PDR':
+      return planification && isPlanificationComplete(planification, intervention.statut);
+    case 'EN_COURS':
+      return controleQualite && isControleQualiteComplete(controleQualite);
+    default:
+      return false;
+  }
+};
+
+const getWorkflowTimeline = async (interventionId) => {
+  try {
+    // Get all workflow-related activities for this intervention
+    const timeline = [];
+    
+    const intervention = await Intervention.findByPk(interventionId);
+    if (intervention) {
+      timeline.push({
+        phase: 'intervention',
+        action: 'Intervention créée',
+        date: intervention.createdAt || intervention.date,
+        status: 'completed'
+      });
+    }
+    
+    const diagnostic = await Diagnostic.findOne({ where: { intervention_id: interventionId } });
+    if (diagnostic) {
+      timeline.push({
+        phase: 'diagnostic',
+        action: 'Diagnostic initié',
+        date: diagnostic.dateCreation,
+        status: isDiagnosticComplete(diagnostic) ? 'completed' : 'in_progress'
+      });
+    }
+    
+    const planification = await Planification.findOne({ where: { intervention_id: interventionId } });
+    if (planification) {
+      timeline.push({
+        phase: 'planification',
+        action: 'Planification créée',
+        date: planification.dateCreation,
+        status: isPlanificationComplete(planification, intervention.statut) ? 'completed' : 'in_progress'
+      });
+    }
+    
+    const controleQualite = await ControleQualite.findOne({ where: { intervention_id: interventionId } });
+    if (controleQualite) {
+      timeline.push({
+        phase: 'controleQualite',
+        action: 'Contrôle qualité effectué',
+        date: controleQualite.dateControle,
+        status: isControleQualiteComplete(controleQualite) ? 'completed' : 'in_progress'
+      });
+    }
+    
+    return timeline.sort((a, b) => new Date(a.date) - new Date(b.date));
+  } catch (error) {
+    console.error('Error getting workflow timeline:', error);
+    return [];
+  }
+};
+
+// Helper functions to get diagnostic data (you may need to implement these based on your schema)
+const getDiagnosticTravailRequis = async (diagnosticId) => {
+  try {
+    const results = await sequelize.query(
+      'SELECT travail FROM Diagnostic_travailRequis WHERE diagnostic_id = ?',
+      { replacements: [diagnosticId], type: sequelize.QueryTypes.SELECT }
+    );
+    return results.map(r => r.travail);
+  } catch (error) {
+    return [];
+  }
+};
+
+const getDiagnosticBesoinPDR = async (diagnosticId) => {
+  try {
+    const results = await sequelize.query(
+      'SELECT besoin FROM Diagnostic_besoinPDR WHERE diagnostic_id = ?',
+      { replacements: [diagnosticId], type: sequelize.QueryTypes.SELECT }
+    );
+    return results.map(r => r.besoin);
+  } catch (error) {
+    return [];
+  }
+};
+
+const getDiagnosticChargesRealisees = async (diagnosticId) => {
+  try {
+    const results = await sequelize.query(
+      'SELECT charge FROM Diagnostic_chargesRealisees WHERE diagnostic_id = ?',
+      { replacements: [diagnosticId], type: sequelize.QueryTypes.SELECT }
+    );
+    return results.map(r => r.charge);
+  } catch (error) {
+    return [];
+  }
+};
+// Helper function to determine next actions
+
 
 // GET /api/interventions/status-counts
 const getStatusCounts = async (req, res) => {

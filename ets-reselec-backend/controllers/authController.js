@@ -1,4 +1,4 @@
-// ets-reselec-backend/controllers/authController.js
+// ets-reselec-backend/controllers/authController.js - FIXED VERSION
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { validationResult } = require('express-validator');
@@ -9,7 +9,7 @@ const { sendSuccess, sendError } = require('../utils/responseUtils');
 const generateToken = (userId) => {
   return jwt.sign(
     { id: userId },
-    process.env.JWT_SECRET,
+    process.env.JWT_SECRET || 'your-fallback-secret-key',
     { expiresIn: process.env.JWT_EXPIRE || '7d' }
   );
 };
@@ -17,13 +17,19 @@ const generateToken = (userId) => {
 // POST /api/auth/login
 const login = async (req, res) => {
   try {
+    console.log('🔍 Login attempt:', { username: req.body.username });
+    
     // Check validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.log('❌ Validation errors:', errors.array());
       return sendError(res, 'Validation failed', 400, errors.array());
     }
 
     const { username, password } = req.body;
+
+    // Log the search attempt
+    console.log('🔍 Searching for user:', username);
 
     // Find user by username with role and permissions
     const user = await User.findOne({ 
@@ -40,21 +46,42 @@ const login = async (req, res) => {
       }]
     });
 
+    console.log('🔍 User found:', user ? `Yes (ID: ${user.id})` : 'No');
+
     if (!user) {
+      console.log('❌ User not found for username:', username);
       return sendError(res, 'Invalid credentials', 401);
     }
 
+    console.log('🔍 User details:', {
+      id: user.id,
+      nom: user.nom,
+      username: user.username,
+      role_id: user.role_id,
+      role_name: user.role?.nom,
+      password_length: user.password?.length,
+      password_starts_with: user.password?.substring(0, 10)
+    });
+
     // Check password
+    console.log('🔐 Testing password...');
     const isPasswordValid = await bcrypt.compare(password, user.password);
+    console.log('🔐 Password valid:', isPasswordValid);
+
     if (!isPasswordValid) {
+      console.log('❌ Invalid password for user:', username);
       return sendError(res, 'Invalid credentials', 401);
     }
+
+    console.log('✅ Password valid, generating token...');
 
     // Generate token
     const token = generateToken(user.id);
+    console.log('✅ Token generated');
 
     // Format permissions
     const permissions = user.role?.permissions?.map(p => `${p.module}:${p.action}`) || [];
+    console.log('📋 User permissions:', permissions.length, 'permissions found');
 
     // Prepare user data for response
     const userData = {
@@ -66,13 +93,15 @@ const login = async (req, res) => {
       permissions
     };
 
+    console.log('✅ Login successful for user:', username);
+
     sendSuccess(res, {
       token,
       user: userData
     }, 'Login successful');
 
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('❌ Login error:', error);
     sendError(res, 'Login failed', 500, error.message);
   }
 };
@@ -80,6 +109,8 @@ const login = async (req, res) => {
 // POST /api/auth/register
 const register = async (req, res) => {
   try {
+    console.log('🔍 Registration attempt:', { username: req.body.username });
+
     // Check validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -102,14 +133,11 @@ const register = async (req, res) => {
       }
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Create user
+    // Create user - password will be hashed by User model hook
     const user = await User.create({
       nom,
       username,
-      password: hashedPassword,
+      password, // This will be hashed by the beforeCreate hook in User model
       section,
       role_id: role_id || 1 // Default to basic role
     });
@@ -127,13 +155,15 @@ const register = async (req, res) => {
     // Generate token
     const token = generateToken(user.id);
 
+    console.log('✅ User registration successful:', username);
+
     sendSuccess(res, {
       token,
       user: createdUser
     }, 'User registered successfully', 201);
 
   } catch (error) {
-    console.error('Registration error:', error);
+    console.error('❌ Registration error:', error);
     sendError(res, 'Registration failed', 500, error.message);
   }
 };
@@ -206,9 +236,7 @@ const updateProfile = async (req, res) => {
       if (!isPasswordValid) {
         return sendError(res, 'Current password is incorrect', 401);
       }
-      
-      const hashedPassword = await bcrypt.hash(newPassword, 10);
-      user.password = hashedPassword;
+      user.password = newPassword; // Will be hashed by model hook
     }
     
     await user.save();
@@ -240,7 +268,7 @@ const refreshToken = async (req, res) => {
     }
 
     // Verify the token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-fallback-secret-key');
     
     // Generate new token
     const newToken = generateToken(decoded.id);

@@ -73,17 +73,64 @@ export const useUpdateInterventionStatus = () => {
     }
   });
 };
-
-export const useInterventionWorkflow = (id, options = {}) => {
+// src/hooks/useInterventions.js - Enhanced workflow hook
+export const useInterventionWorkflow = (id) => {
   return useQuery({
     queryKey: ['intervention-workflow', id],
-    queryFn: () => interventionService.getWorkflow(id).then(res => {
-      console.log('Workflow API Response:', res.data);
-      return res.data.data; // Make sure we return the correct data structure
-    }),
-    enabled: !!id && (options.enabled !== false),
-    staleTime: 30000 // 30 seconds
+    queryFn: () => interventionService.getWorkflow(id).then(res => res.data.data),
+    enabled: !!id,
+    staleTime: 30000, // 30 seconds
+    refetchInterval: (data) => {
+      // Auto-refresh more frequently for active interventions
+      if (data?.intervention?.statut === 'EN_COURS') {
+        return 15000; // 15 seconds for active interventions
+      }
+      return 60000; // 1 minute for others
+    }
   });
+};
+
+// New hook for workflow actions
+export const useWorkflowActions = () => {
+  const queryClient = useQueryClient();
+  
+  return {
+    // Advance workflow to next phase
+    advanceWorkflow: useMutation({
+      mutationFn: ({ id, nextStatus }) => 
+        interventionService.updateStatus(id, nextStatus),
+      onSuccess: (data, variables) => {
+        queryClient.invalidateQueries(['intervention-workflow', variables.id]);
+        queryClient.invalidateQueries(['intervention', variables.id]);
+        queryClient.invalidateQueries(['interventions']);
+        toast.success('Workflow avancé avec succès');
+      },
+      onError: (error) => {
+        toast.error('Erreur lors de l\'avancement du workflow');
+      }
+    }),
+    
+    // Update phase data
+    updatePhase: useMutation({
+      mutationFn: ({ id, phase, data }) => {
+        switch (phase) {
+          case 'diagnostic':
+            return interventionService.updateDiagnostic(id, data);
+          case 'planification':
+            return interventionService.updatePlanification(id, data);
+          case 'controleQualite':
+            return interventionService.addControleQualite(id, data);
+          default:
+            throw new Error('Unknown phase');
+        }
+      },
+      onSuccess: (data, variables) => {
+        queryClient.invalidateQueries(['intervention-workflow', variables.id]);
+        queryClient.invalidateQueries(['intervention', variables.id]);
+        toast.success(`${variables.phase} mis à jour avec succès`);
+      }
+    })
+  };
 };
 export const useUpdateDiagnostic = () => {
   const queryClient = useQueryClient();
