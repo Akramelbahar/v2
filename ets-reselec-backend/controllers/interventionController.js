@@ -444,16 +444,28 @@ const updateInterventionStatus = async (req, res) => {
   }
 };
 
-// GET /api/interventions/:id/workflow
+// GET /api/interventions/:id/workflow - FIXED VERSION
 const getWorkflowStatus = async (req, res) => {
   try {
     const { id } = req.params;
 
     const intervention = await Intervention.findByPk(id, {
       include: [
-        { model: Diagnostic, as: 'diagnostic' },
-        { model: Planification, as: 'planification' },
-        { model: ControleQualite, as: 'controleQualite' }
+        { 
+          model: Diagnostic, 
+          as: 'diagnostic',
+          required: false
+        },
+        { 
+          model: Planification, 
+          as: 'planification',
+          required: false
+        },
+        { 
+          model: ControleQualite, 
+          as: 'controleQualite',
+          required: false
+        }
       ]
     });
 
@@ -471,16 +483,16 @@ const getWorkflowStatus = async (req, res) => {
       phases: {
         diagnostic: {
           completed: !!intervention.diagnostic,
-          dateCreation: intervention.diagnostic?.dateCreation
+          dateCreation: intervention.diagnostic?.dateCreation || null
         },
         planification: {
           completed: !!intervention.planification,
-          dateCreation: intervention.planification?.dateCreation,
-          disponibilitePDR: intervention.planification?.disponibilitePDR
+          dateCreation: intervention.planification?.dateCreation || null,
+          disponibilitePDR: intervention.planification?.disponibilitePDR || false
         },
         controleQualite: {
           completed: !!intervention.controleQualite,
-          dateControle: intervention.controleQualite?.dateControle
+          dateControle: intervention.controleQualite?.dateControle || null
         }
       },
       nextActions: getNextActions(intervention)
@@ -510,6 +522,8 @@ const getNextActions = (intervention) => {
       break;
     case 'TERMINEE':
       actions.push('Generate final report');
+      break;
+    default:
       break;
   }
   

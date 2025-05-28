@@ -40,12 +40,12 @@ const getAllEquipment = async (req, res) => {
     }
 
     // Status filter (based on latest intervention status)
-    let having = '';
+    let having = null;
     if (status) {
       having = sequelize.literal(`latestInterventionStatus = '${status}'`);
     }
 
-    const { count, rows } = await Equipment.findAndCountAll({
+    const queryOptions = {
       where: whereClause,
       include: [
         {
@@ -81,11 +81,17 @@ const getAllEquipment = async (req, res) => {
           ]
         ]
       },
-      having,
       limit: parseInt(limit),
       offset: parseInt(offset),
       order: [[sortBy, sortOrder]]
-    });
+    };
+
+    // Add having clause if status filter is applied
+    if (having) {
+      queryOptions.having = having;
+    }
+
+    const { count, rows } = await Equipment.findAndCountAll(queryOptions);
 
     sendPaginatedResponse(res, rows, page, limit, count);
 
@@ -292,95 +298,32 @@ const deleteEquipment = async (req, res) => {
 // GET /api/equipment/types
 const getEquipmentTypes = async (req, res) => {
   try {
-    const types = await sequelize.query(
-      'SELECT value FROM TypeEquipement_enum ORDER BY value',
-      { type: sequelize.QueryTypes.SELECT }
-    );
+    // Since we don't have a separate TypeEquipement_enum table, 
+    // we'll return the predefined types from the model validation
+    const types = [
+      'MOTEUR_ELECTRIQUE',
+      'TRANSFORMATEUR',
+      'GENERATEUR',
+      'POMPE_INDUSTRIELLE',
+      'VENTILATEUR',
+      'COMPRESSEUR',
+      'AUTOMATE',
+      'TABLEAU_ELECTRIQUE'
+    ];
 
-    sendSuccess(res, types.map(t => t.value));
+    sendSuccess(res, types);
 
   } catch (error) {
     console.error('Get equipment types error:', error);
     sendError(res, 'Failed to retrieve equipment types', 500, error.message);
   }
 };
-//const QRCode = require('qrcode');
-
-// POST /api/equipment/:id/generate-qr - Generate QR code for equipment
-
-// GET /api/equipment/:id/history - Get complete intervention history
-const getEquipmentHistory = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { page = 1, limit = 20 } = req.query;
-    const offset = (page - 1) * limit;
-
-    const equipment = await Equipment.findByPk(id);
-    if (!equipment) {
-      return sendError(res, 'Equipment not found', 404);
-    }
-
-    const { count, rows } = await Intervention.findAndCountAll({
-      where: { equipement_id: id },
-      include: [
-        {
-          model: User,
-          as: 'creerPar',
-          attributes: ['nom']
-        },
-        {
-          model: Diagnostic,
-          as: 'diagnostic'
-        },
-        {
-          model: ControleQualite,
-          as: 'controleQualite'
-        }
-      ],
-      order: [['date', 'DESC']],
-      limit: parseInt(limit),
-      offset: parseInt(offset)
-    });
-
-    // Build timeline data
-    const timeline = rows.map(intervention => ({
-      id: intervention.id,
-      date: intervention.date,
-      type: 'intervention',
-      title: intervention.description || 'Intervention',
-      status: intervention.statut,
-      urgence: intervention.urgence,
-      performer: intervention.creerPar.nom,
-      phases: {
-        diagnostic: !!intervention.diagnostic,
-        planification: !!intervention.planification,
-        controleQualite: !!intervention.controleQualite
-      }
-    }));
-
-    const response = {
-      timeline,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: count,
-        pages: Math.ceil(count / limit)
-      }
-    };
-
-    sendSuccess(res, response);
-  } catch (error) {
-    console.error('Get equipment history error:', error);
-    sendError(res, 'Failed to retrieve equipment history', 500, error.message);
-  }
-};
-
 
 module.exports = {
   getAllEquipment,
   getEquipmentById,
   createEquipment,
   updateEquipment,
-  deleteEquipment,getEquipmentHistory,
+  deleteEquipment,
   getEquipmentTypes
 };
