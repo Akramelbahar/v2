@@ -6,7 +6,7 @@ export const roleService = {
   getAll: (params = {}) => 
     api.get('/roles', { params }),
   
-  // Get role by ID with permissions
+  // Get role by ID
   getById: (id) => 
     api.get(`/roles/${id}`),
   
@@ -26,13 +26,29 @@ export const roleService = {
   getPermissions: () => 
     api.get('/permissions'),
   
-  // Update role permissions
-  updatePermissions: (roleId, permissionIds) => 
-    api.put(`/roles/${roleId}/permissions`, { permissionIds }),
+  // Get permissions by module
+  getPermissionsByModule: (module) => 
+    api.get('/permissions', { params: { module } }),
+  
+  // Assign permissions to role
+  assignPermissions: (roleId, permissionIds) => 
+    api.put(`/roles/${roleId}/permissions`, { permissions: permissionIds }),
+  
+  // Remove permissions from role
+  removePermissions: (roleId, permissionIds) => 
+    api.delete(`/roles/${roleId}/permissions`, { data: { permissions: permissionIds } }),
+  
+  // Assign role to user
+  assignToUser: (userId, roleId) => 
+    api.put(`/users/${userId}/role`, { role_id: roleId }),
+  
+  // Remove role from user
+  removeFromUser: (userId) => 
+    api.delete(`/users/${userId}/role`),
   
   // Get role statistics
-  getStatistics: () => 
-    api.get('/roles/statistics'),
+  getStats: () => 
+    api.get('/roles/stats'),
   
   // Search roles
   search: (query, filters = {}) => 
@@ -40,57 +56,28 @@ export const roleService = {
       params: { search: query, ...filters } 
     }),
   
-  // Get users by role
-  getUsersByRole: (roleId) => 
-    api.get(`/roles/${roleId}/users`),
+  // Clone role
+  clone: (id, newName) => 
+    api.post(`/roles/${id}/clone`, { nom: newName }),
   
-  // Assign role to user
-  assignRole: (userId, roleId) => 
-    api.put(`/users/${userId}/role`, { roleId }),
+  // Get default roles
+  getDefaults: () => 
+    api.get('/roles/defaults'),
   
-  // Remove role from user
-  removeRole: (userId) => 
-    api.delete(`/users/${userId}/role`),
+  // Export role configuration
+  export: (id) => 
+    api.get(`/roles/${id}/export`, {
+      responseType: 'blob'
+    }),
   
-  // Get permission modules
-  getPermissionModules: () => 
-    api.get('/permissions/modules'),
-  
-  // Create permission
-  createPermission: (data) => 
-    api.post('/permissions', data),
-  
-  // Update permission
-  updatePermission: (id, data) => 
-    api.put(`/permissions/${id}`, data),
-  
-  // Delete permission
-  deletePermission: (id) => 
-    api.delete(`/permissions/${id}`),
-  
-  // Bulk operations
-  bulkAssignRole: (userIds, roleId) => 
-    api.post('/roles/bulk-assign', { userIds, roleId }),
-  
-  bulkRemoveRole: (userIds) => 
-    api.post('/roles/bulk-remove', { userIds }),
-  
-  // Role templates
-  getRoleTemplates: () => 
-    api.get('/roles/templates'),
-  
-  createFromTemplate: (templateId, roleName) => 
-    api.post('/roles/from-template', { templateId, roleName }),
-  
-  // Export/Import
-  exportRoles: () => 
-    api.get('/roles/export', { responseType: 'blob' }),
-  
-  importRoles: (file) => {
+  // Import role configuration
+  import: (file) => {
     const formData = new FormData();
     formData.append('file', file);
     return api.post('/roles/import', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
     });
   }
 };
