@@ -1,4 +1,4 @@
-// src/pages/Users.jsx
+// src/pages/UsersManagement.jsx
 import React, { useState } from 'react';
 import { 
   UserCheck, Plus, Search, Edit, Trash2, Eye, Lock, Power, 
@@ -25,7 +25,7 @@ import {
   useRoles
 } from '../hooks/useUsers';
 
-const Users = () => {
+const UsersManagement = () => {
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
@@ -615,4 +615,4 @@ const Users = () => {
   );
 };
 
-export default Users;
+export default UsersManagement;

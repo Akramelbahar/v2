@@ -1,39 +1,19 @@
+// ets-reselec-backend/controllers/roleController.js
 const { validationResult } = require('express-validator');
-const { sequelize } = require('../config/database');
-const { Role, Permission, User } = require('../models');
-const { sendSuccess, sendError, sendPaginatedResponse } = require('../utils/responseUtils');
+const { Op } = require('sequelize');
+const { Role, Permission, User, sequelize } = require('../models');
+const { sendSuccess, sendError } = require('../utils/responseUtils');
 
-// GET /api/admin/roles
+// GET /api/roles
 const getAllRoles = async (req, res) => {
   try {
-    const { 
-      page = 1, 
-      limit = 10, 
-      search = '',
-      sortBy = 'id',
-      sortOrder = 'ASC'
-    } = req.query;
-    
-    const offset = (page - 1) * limit;
-    const whereClause = {};
-    
-    if (search) {
-      whereClause.nom = { [sequelize.Sequelize.Op.like]: `%${search}%` };
-    }
-
-    const { count, rows } = await Role.findAndCountAll({
-      where: whereClause,
+    const roles = await Role.findAll({
       include: [
         {
           model: Permission,
           as: 'permissions',
           attributes: ['id', 'module', 'action', 'description'],
-          through: { attributes: [] } // Exclude junction table attributes
-        },
-        {
-          model: User,
-          as: 'users',
-          attributes: ['id'] // Only get IDs to count users
+          through: { attributes: [] }
         }
       ],
       attributes: {
@@ -48,12 +28,17 @@ const getAllRoles = async (req, res) => {
           ]
         ]
       },
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      order: [[sortBy, sortOrder]]
+      order: [['id', 'ASC']]
     });
 
-    sendPaginatedResponse(res, rows, page, limit, count);
+    // Add timestamps for consistency
+    const formattedRoles = roles.map(role => ({
+      ...role.toJSON(),
+      createdAt: role.createdAt || new Date().toISOString(),
+      updatedAt: role.updatedAt || new Date().toISOString()
+    }));
+
+    sendSuccess(res, formattedRoles);
 
   } catch (error) {
     console.error('Get roles error:', error);
@@ -61,7 +46,7 @@ const getAllRoles = async (req, res) => {
   }
 };
 
-// GET /api/admin/roles/:id
+// GET /api/roles/:id
 const getRoleById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -73,11 +58,6 @@ const getRoleById = async (req, res) => {
           as: 'permissions',
           attributes: ['id', 'module', 'action', 'description'],
           through: { attributes: [] }
-        },
-        {
-          model: User,
-          as: 'users',
-          attributes: ['id', 'nom', 'username']
         }
       ]
     });
@@ -86,7 +66,26 @@ const getRoleById = async (req, res) => {
       return sendError(res, 'Role not found', 404);
     }
 
-    sendSuccess(res, role);
+    // Get users with this role
+    const users = await User.findAll({
+      where: { role_id: id },
+      attributes: ['id', 'nom', 'username', 'section'],
+      include: [{
+        model: Role,
+        as: 'role',
+        attributes: ['nom']
+      }]
+    });
+
+    const roleData = {
+      ...role.toJSON(),
+      users,
+      userCount: users.length,
+      createdAt: role.createdAt || new Date().toISOString(),
+      updatedAt: role.updatedAt || new Date().toISOString()
+    };
+
+    sendSuccess(res, roleData);
 
   } catch (error) {
     console.error('Get role by ID error:', error);
@@ -94,78 +93,138 @@ const getRoleById = async (req, res) => {
   }
 };
 
-// POST /api/admin/roles
+// POST /api/roles
 const createRole = async (req, res) => {
-  const transaction = await sequelize.transaction();
-  
   try {
+    // Check validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      await transaction.rollback();
       return sendError(res, 'Validation failed', 400, errors.array());
     }
 
-    const { nom, permissions = [] } = req.body;
+    const { nom } = req.body;
 
-    // Check if role already exists
+    // Check if role name already exists
     const existingRole = await Role.findOne({ where: { nom } });
     if (existingRole) {
-      await transaction.rollback();
-      return sendError(res, 'Role already exists', 400);
+      return sendError(res, 'Role name already exists', 400);
     }
 
     // Create role
-    const role = await Role.create({ nom }, { transaction });
+    const role = await Role.create({ nom });
 
-    // Assign permissions if provided
-    if (permissions.length > 0) {
-      const permissionInstances = await Permission.findAll({
-        where: { id: permissions },
-        transaction
-      });
-
-      if (permissionInstances.length !== permissions.length) {
-        await transaction.rollback();
-        return sendError(res, 'Some permissions do not exist', 400);
-      }
-
-      await role.setPermissions(permissionInstances, { transaction });
-    }
-
-    await transaction.commit();
-
-    // Reload with associations
-    const createdRole = await Role.findByPk(role.id, {
-      include: [{
-        model: Permission,
-        as: 'permissions',
-        attributes: ['id', 'module', 'action', 'description'],
-        through: { attributes: [] }
-      }]
-    });
-
-    sendSuccess(res, createdRole, 'Role created successfully', 201);
+    sendSuccess(res, role, 'Role created successfully', 201);
 
   } catch (error) {
-    await transaction.rollback();
     console.error('Create role error:', error);
     sendError(res, 'Failed to create role', 500, error.message);
   }
 };
 
-// PUT /api/admin/roles/:id
+// PUT /api/roles/:id
 const updateRole = async (req, res) => {
-  const transaction = await sequelize.transaction();
-  
   try {
+    // Check validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      await transaction.rollback();
       return sendError(res, 'Validation failed', 400, errors.array());
     }
 
     const { id } = req.params;
-    const { nom, permissions } = req.body;
+    const { nom } = req.body;
+
+    // Prevent modifying system roles
+    if (parseInt(id) === 1) {
+      return sendError(res, 'Cannot modify the Administrator role', 403);
+    }
+
+    const role = await Role.findByPk(id);
+    if (!role) {
+      return sendError(res, 'Role not found', 404);
+    }
+
+    // Check if new name already exists
+    if (nom !== role.nom) {
+      const existingRole = await Role.findOne({ 
+        where: { 
+          nom,
+          id: { [Op.ne]: id }
+        } 
+      });
+      
+      if (existingRole) {
+        return sendError(res, 'Role name already exists', 400);
+      }
+    }
+
+    // Update role
+    await role.update({ nom });
+
+    sendSuccess(res, role, 'Role updated successfully');
+
+  } catch (error) {
+    console.error('Update role error:', error);
+    sendError(res, 'Failed to update role', 500, error.message);
+  }
+};
+
+// DELETE /api/roles/:id
+const deleteRole = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Prevent deleting system roles
+    if (parseInt(id) === 1) {
+      return sendError(res, 'Cannot delete the Administrator role', 403);
+    }
+
+    const role = await Role.findByPk(id);
+    if (!role) {
+      return sendError(res, 'Role not found', 404);
+    }
+
+    // Check if role has users
+    const userCount = await User.count({ where: { role_id: id } });
+    if (userCount > 0) {
+      return sendError(res, 
+        `Cannot delete role. ${userCount} users are assigned to this role.`, 
+        400
+      );
+    }
+
+    await role.destroy();
+
+    sendSuccess(res, null, 'Role deleted successfully');
+
+  } catch (error) {
+    console.error('Delete role error:', error);
+    sendError(res, 'Failed to delete role', 500, error.message);
+  }
+};
+
+// GET /api/permissions
+const getAllPermissions = async (req, res) => {
+  try {
+    const permissions = await Permission.findAll({
+      attributes: ['id', 'module', 'action', 'description'],
+      order: [['module', 'ASC'], ['action', 'ASC']]
+    });
+
+    sendSuccess(res, permissions);
+
+  } catch (error) {
+    console.error('Get permissions error:', error);
+    sendError(res, 'Failed to retrieve permissions', 500, error.message);
+  }
+};
+
+// PUT /api/roles/:id/permissions
+const updateRolePermissions = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  
+  try {
+    const { id } = req.params;
+    const { permission_ids = [] } = req.body;
 
     const role = await Role.findByPk(id);
     if (!role) {
@@ -173,43 +232,39 @@ const updateRole = async (req, res) => {
       return sendError(res, 'Role not found', 404);
     }
 
-    // Check if new name conflicts with existing role
-    if (nom && nom !== role.nom) {
-      const existingRole = await Role.findOne({ where: { nom } });
-      if (existingRole) {
+    // Validate all permission IDs exist
+    if (permission_ids.length > 0) {
+      const validPermissions = await Permission.count({
+        where: { id: permission_ids }
+      });
+      
+      if (validPermissions !== permission_ids.length) {
         await transaction.rollback();
-        return sendError(res, 'Role name already exists', 400);
+        return sendError(res, 'Some permission IDs are invalid', 400);
       }
     }
 
-    // Update role
-    if (nom) {
-      await role.update({ nom }, { transaction });
-    }
-
-    // Update permissions if provided
-    if (Array.isArray(permissions)) {
-      if (permissions.length > 0) {
-        const permissionInstances = await Permission.findAll({
-          where: { id: permissions },
-          transaction
-        });
-
-        if (permissionInstances.length !== permissions.length) {
-          await transaction.rollback();
-          return sendError(res, 'Some permissions do not exist', 400);
-        }
-
-        await role.setPermissions(permissionInstances, { transaction });
-      } else {
-        // Remove all permissions
-        await role.setPermissions([], { transaction });
+    // Remove all existing permissions
+    await sequelize.query(
+      'DELETE FROM Role_Permission WHERE role_id = ?',
+      { 
+        replacements: [id],
+        transaction 
       }
+    );
+
+    // Add new permissions
+    if (permission_ids.length > 0) {
+      const values = permission_ids.map(permId => `(${id}, ${permId})`).join(',');
+      await sequelize.query(
+        `INSERT INTO Role_Permission (role_id, permission_id) VALUES ${values}`,
+        { transaction }
+      );
     }
 
     await transaction.commit();
 
-    // Reload with associations
+    // Reload role with updated permissions
     const updatedRole = await Role.findByPk(id, {
       include: [{
         model: Permission,
@@ -219,17 +274,17 @@ const updateRole = async (req, res) => {
       }]
     });
 
-    sendSuccess(res, updatedRole, 'Role updated successfully');
+    sendSuccess(res, updatedRole, 'Role permissions updated successfully');
 
   } catch (error) {
     await transaction.rollback();
-    console.error('Update role error:', error);
-    sendError(res, 'Failed to update role', 500, error.message);
+    console.error('Update role permissions error:', error);
+    sendError(res, 'Failed to update role permissions', 500, error.message);
   }
 };
 
-// DELETE /api/admin/roles/:id
-const deleteRole = async (req, res) => {
+// GET /api/roles/:id/users
+const getUsersByRole = async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -238,49 +293,32 @@ const deleteRole = async (req, res) => {
       return sendError(res, 'Role not found', 404);
     }
 
-    // Check if role is in use
-    const userCount = await User.count({ where: { role_id: id } });
-    if (userCount > 0) {
-      return sendError(res, 
-        `Cannot delete role. ${userCount} user(s) are assigned to this role.`, 
-        400
-      );
-    }
-
-    await role.destroy();
-    sendSuccess(res, null, 'Role deleted successfully');
-
-  } catch (error) {
-    console.error('Delete role error:', error);
-    sendError(res, 'Failed to delete role', 500, error.message);
-  }
-};
-
-// GET /api/admin/permissions
-const getAllPermissions = async (req, res) => {
-  try {
-    const permissions = await Permission.findAll({
-      order: [['module', 'ASC'], ['action', 'ASC']]
-    });
-
-    // Group permissions by module
-    const groupedPermissions = permissions.reduce((acc, permission) => {
-      const module = permission.module;
-      if (!acc[module]) {
-        acc[module] = [];
+    const users = await User.findAll({
+      where: { role_id: id },
+      attributes: ['id', 'nom', 'username', 'section'],
+      include: [{
+        model: sequelize.models.Intervention,
+        as: 'interventionsCrees',
+        attributes: ['id'],
+        required: false
+      }],
+      group: ['User.id'],
+      attributes: {
+        include: [
+          [sequelize.fn('COUNT', sequelize.col('interventionsCrees.id')), 'interventionCount']
+        ]
       }
-      acc[module].push(permission);
-      return acc;
-    }, {});
+    });
 
     sendSuccess(res, {
-      permissions,
-      groupedPermissions
+      role: role.nom,
+      users,
+      total: users.length
     });
 
   } catch (error) {
-    console.error('Get permissions error:', error);
-    sendError(res, 'Failed to retrieve permissions', 500, error.message);
+    console.error('Get users by role error:', error);
+    sendError(res, 'Failed to retrieve users for role', 500, error.message);
   }
 };
 
@@ -290,5 +328,7 @@ module.exports = {
   createRole,
   updateRole,
   deleteRole,
-  getAllPermissions
+  getAllPermissions,
+  updateRolePermissions,
+  getUsersByRole
 };
