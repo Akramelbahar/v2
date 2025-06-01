@@ -5,6 +5,8 @@ const {
   Equipment, 
   Client, 
   User, 
+  Role,
+  Section,
   Diagnostic, 
   Planification, 
   ControleQualite,
@@ -12,6 +14,7 @@ const {
   sequelize 
 } = require('../models');
 const { sendSuccess, sendError, sendPaginatedResponse } = require('../utils/responseUtils');
+
 
 // Valid status transitions - Fixed logic
 const VALID_STATUS_TRANSITIONS = {
@@ -41,9 +44,19 @@ const getAllInterventions = async (req, res) => {
     } = req.query;
     
     const offset = (page - 1) * limit;
-    const whereClause = {};
+    let whereClause = {};
 
-    // Search filter
+    // Get current user with role
+    const currentUser = await User.findByPk(req.userId, {
+      include: [{
+        model: Role,
+        as: 'role'
+      }]
+    });
+
+    const isAdmin = currentUser.role?.nom === 'Administrateur';
+
+    // Build search conditions
     if (search) {
       whereClause[Op.or] = [
         { description: { [Op.like]: `%${search}%` } },
@@ -52,47 +65,41 @@ const getAllInterventions = async (req, res) => {
       ];
     }
 
-    // Status filter
-    if (statut) {
-      whereClause.statut = statut;
-    }
-
-    // Urgency filter
-    if (urgence !== undefined) {
-      whereClause.urgence = urgence === 'true';
-    }
-
-    // Equipment filter
-    if (equipement_id) {
-      whereClause.equipement_id = equipement_id;
-    }
-
-    // Date range filter
+    if (statut) whereClause.statut = statut;
+    if (urgence !== undefined) whereClause.urgence = urgence === 'true';
+    if (equipement_id) whereClause.equipement_id = equipement_id;
     if (dateFrom || dateTo) {
       whereClause.date = {};
       if (dateFrom) whereClause.date[Op.gte] = dateFrom;
       if (dateTo) whereClause.date[Op.lte] = dateTo;
     }
 
+    // Include configuration
+    const includeConfig = [
+      {
+        model: Equipment,
+        as: 'equipement',
+        attributes: ['id', 'nom', 'marque', 'modele', 'type_equipement'],
+        include: [{
+          model: Client,
+          as: 'proprietaire',
+          attributes: ['id', 'nom_entreprise']
+        }]
+      },
+      {
+        model: User,
+        as: 'creerPar',
+        attributes: ['id', 'nom', 'username', 'section_id'],
+        // Filter by section for non-admin users
+        where: !isAdmin && currentUser.section_id ? 
+          { section_id: currentUser.section_id } : 
+          {}
+      }
+    ];
+
     const { count, rows } = await Intervention.findAndCountAll({
       where: whereClause,
-      include: [
-        {
-          model: Equipment,
-          as: 'equipement',
-          attributes: ['id', 'nom', 'marque', 'modele', 'type_equipement'],
-          include: [{
-            model: Client,
-            as: 'proprietaire',
-            attributes: ['id', 'nom_entreprise']
-          }]
-        },
-        {
-          model: User,
-          as: 'creerPar',
-          attributes: ['id', 'nom', 'username']
-        }
-      ],
+      include: includeConfig,
       limit: parseInt(limit),
       offset: parseInt(offset),
       order: [[sortBy, sortOrder]],
@@ -207,7 +214,6 @@ const createIntervention = async (req, res) => {
   const transaction = await sequelize.transaction();
   
   try {
-    // Check validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       await transaction.rollback();
@@ -216,6 +222,9 @@ const createIntervention = async (req, res) => {
 
     const { equipement_id, date, description, urgence = false, statut = 'PLANIFIEE' } = req.body;
 
+    // Get user with section
+    const user = await User.findByPk(req.userId);
+    
     // Verify equipment exists
     const equipment = await Equipment.findByPk(equipement_id);
     if (!equipment) {
@@ -233,11 +242,24 @@ const createIntervention = async (req, res) => {
       equipement_id
     }, { transaction });
 
-    // Initialize workflow phases
-    await Diagnostic.create({
-      dateCreation: new Date(),
-      intervention_id: intervention.id
-    }, { transaction });
+    // Assign intervention to user's section
+    if (user.section_id) {
+      await sequelize.query(
+        'INSERT INTO Section_Intervention (section_id, intervention_id) VALUES (?, ?)',
+        { 
+          replacements: [user.section_id, intervention.id],
+          transaction 
+        }
+      );
+    }
+
+    // Initialize workflow phases if needed
+    if (statut === 'PLANIFIEE') {
+      await Diagnostic.create({
+        dateCreation: new Date(),
+        intervention_id: intervention.id
+      }, { transaction });
+    }
 
     await transaction.commit();
 
@@ -257,6 +279,10 @@ const createIntervention = async (req, res) => {
           model: User,
           as: 'creerPar',
           attributes: ['id', 'nom']
+        },
+        {
+          model: Diagnostic,
+          as: 'diagnostic'
         }
       ]
     });

@@ -6,6 +6,7 @@ import { Toaster } from 'react-hot-toast';
 
 // Context Providers
 import { AuthProvider } from './context/AuthContext';
+
 // Components
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
@@ -27,14 +28,23 @@ const Reports = React.lazy(() => import('./pages/Reports'));
 const Analytics = React.lazy(() => import('./pages/Analytics'));
 const Users = React.lazy(() => import('./pages/Users'));
 const Roles = React.lazy(() => import('./pages/Roles'));
+const Sections = React.lazy(() => import('./pages/Sections'));
 
-// Create React Query client
+// Create React Query client with optimized settings
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 1,
+      retry: (failureCount, error) => {
+        // Don't retry on 4xx errors
+        if (error?.response?.status >= 400 && error?.response?.status < 500) {
+          return false;
+        }
+        // Retry up to 3 times for other errors
+        return failureCount < 3;
+      },
       refetchOnWindowFocus: false,
       staleTime: 5 * 60 * 1000, // 5 minutes
+      cacheTime: 10 * 60 * 1000, // 10 minutes
     },
     mutations: {
       retry: 1,
@@ -42,7 +52,7 @@ const queryClient = new QueryClient({
   },
 });
 
-// Public route wrapper
+// Public route wrapper component
 const PublicRoute = ({ children }) => {
   return (
     <div className="min-h-screen bg-gray-50">
@@ -51,7 +61,7 @@ const PublicRoute = ({ children }) => {
   );
 };
 
-// Lazy loading wrapper with suspense
+// Lazy loading wrapper with suspense and loading state
 const LazyLoadWrapper = ({ children }) => (
   <React.Suspense fallback={<PageLoadingSpinner message="Chargement de la page..." />}>
     {children}
@@ -85,10 +95,10 @@ function App() {
                     <Layout />
                   </ProtectedRoute>
                 }>
-                  {/* Dashboard */}
+                  {/* Dashboard - Default route */}
                   <Route index element={<Dashboard />} />
                   
-                  {/* Profile */}
+                  {/* User Profile */}
                   <Route path="profile" element={<Profile />} />
                   
                   {/* Client management */}
@@ -137,47 +147,83 @@ function App() {
                   } />
                   
                   {/* Admin-only routes */}
+                  {/* User Management */}
                   <Route path="users" element={
-                    <ProtectedRoute requiredRole="Admin">
+                    <ProtectedRoute requiredRole="Administrateur">
                       <LazyLoadWrapper>
                         <Users />
                       </LazyLoadWrapper>
                     </ProtectedRoute>
                   } />
                   
+                  {/* Role Management */}
                   <Route path="roles" element={
-                    <ProtectedRoute requiredRole="Admin">
+                    <ProtectedRoute requiredRole="Administrateur">
                       <LazyLoadWrapper>
                         <Roles />
                       </LazyLoadWrapper>
                     </ProtectedRoute>
                   } />
+                  
+                  {/* Section Management */}
+                  <Route path="sections" element={
+                    <ProtectedRoute requiredRole="Administrateur">
+                      <LazyLoadWrapper>
+                        <Sections />
+                      </LazyLoadWrapper>
+                    </ProtectedRoute>
+                  } />
                 </Route>
                 
-                {/* Catch all route - 404 */}
+                {/* Redirect root to dashboard if authenticated */}
+                <Route path="/" element={<Navigate to="/" replace />} />
+                
+                {/* 404 - Catch all route */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </div>
             
-            {/* Toast notifications */}
+            {/* Toast notifications with custom configuration */}
             <Toaster
               position="top-right"
+              reverseOrder={false}
+              gutter={8}
               toastOptions={{
+                // Default options for all toasts
                 duration: 4000,
                 style: {
                   background: '#363636',
                   color: '#fff',
+                  padding: '16px',
+                  borderRadius: '8px',
+                  fontSize: '14px',
                 },
+                // Success toast styling
                 success: {
                   duration: 3000,
                   style: {
                     background: '#10B981',
                   },
+                  iconTheme: {
+                    primary: '#fff',
+                    secondary: '#10B981',
+                  },
                 },
+                // Error toast styling
                 error: {
                   duration: 5000,
                   style: {
                     background: '#EF4444',
+                  },
+                  iconTheme: {
+                    primary: '#fff',
+                    secondary: '#EF4444',
+                  },
+                },
+                // Loading toast styling
+                loading: {
+                  style: {
+                    background: '#6B7280',
                   },
                 },
               }}
@@ -186,7 +232,18 @@ function App() {
             {/* React Query DevTools - Only in development */}
             {process.env.NODE_ENV === 'development' && 
              process.env.REACT_APP_ENABLE_QUERY_DEV_TOOLS === 'true' && (
-              <ReactQueryDevtools initialIsOpen={false} />
+              <ReactQueryDevtools 
+                initialIsOpen={false} 
+                position="bottom-right"
+                toggleButtonProps={{
+                  style: {
+                    position: 'fixed',
+                    bottom: '20px',
+                    right: '20px',
+                    zIndex: 99999,
+                  },
+                }}
+              />
             )}
           </AuthProvider>
         </BrowserRouter>

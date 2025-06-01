@@ -10,10 +10,9 @@ import {
   UserCheck, 
   X,
   Home,
-  Package
+  Package , Building
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-
 const Sidebar = ({ isOpen, isCollapsed, onClose, onToggleCollapse }) => {
   const location = useLocation();
   const { user, hasPermission, isAdmin } = useAuth();
@@ -70,6 +69,12 @@ const Sidebar = ({ isOpen, isCollapsed, onClose, onToggleCollapse }) => {
       name: 'Rôles & Permissions',
       href: '/roles',
       icon: Shield,
+      adminOnly: true
+    },
+    {
+      name: 'Sections',
+      href: '/sections',
+      icon: Building,
       adminOnly: true
     }
   ];

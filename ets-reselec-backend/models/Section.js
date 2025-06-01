@@ -10,6 +10,7 @@ const Section = sequelize.define('Section', {
   nom: {
     type: DataTypes.STRING(100),
     allowNull: false,
+    unique: true,
     validate: {
       notEmpty: {
         msg: 'Section name is required'

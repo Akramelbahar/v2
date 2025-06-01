@@ -1,6 +1,5 @@
-// ets-reselec-backend/middleware/auth.js
 const jwt = require('jsonwebtoken');
-const { User, Role } = require('../models');
+const { User, Role, Permission, sequelize } = require('../models');
 
 // Verify JWT token
 const verifyToken = async (req, res, next) => {
@@ -18,7 +17,15 @@ const verifyToken = async (req, res, next) => {
     
     // Find user and attach to request
     const user = await User.findByPk(decoded.id, {
-      attributes: { exclude: ['password'] }
+      attributes: { exclude: ['password'] },
+      include: [{
+        model: Role,
+        as: 'role',
+        include: [{
+          model: Permission,
+          as: 'permissions'
+        }]
+      }]
     });
     
     if (!user) {
@@ -63,18 +70,26 @@ const checkRole = (...roles) => {
         });
       }
 
-      // Get user with role
-      const userWithRole = await User.findByPk(req.user.id, {
-        include: [{
-          model: Role,
-          as: 'role'
-        }]
-      });
+      // Get user with role if not already loaded
+      let userWithRole = req.user;
+      if (!userWithRole.role) {
+        userWithRole = await User.findByPk(req.user.id, {
+          include: [{
+            model: Role,
+            as: 'role'
+          }]
+        });
+      }
 
-      if (!userWithRole.role || !roles.includes(userWithRole.role.nom)) {
+      const userRole = userWithRole.role?.nom;
+      
+      // Check if user has one of the required roles
+      if (!userRole || !roles.includes(userRole)) {
         return res.status(403).json({
           success: false,
-          message: 'Access denied. Insufficient permissions.'
+          message: 'Access denied. Insufficient permissions.',
+          required: roles,
+          userRole: userRole
         });
       }
 

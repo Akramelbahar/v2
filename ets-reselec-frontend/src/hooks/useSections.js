@@ -1,28 +1,30 @@
-// src/hooks/useSections.js
+// hooks/useSections.js
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { sectionService } from '../services/sectionService';
 import toast from 'react-hot-toast';
 
-// Get all sections
 export const useSections = (params = {}) => {
   return useQuery({
     queryKey: ['sections', params],
-    queryFn: () => sectionService.getAll(params).then(res => res.data.data || res.data),
-    staleTime: 600000 // 10 minutes - sections don't change often
+    queryFn: () => sectionService.getAll(params).then(res => {
+      // The API returns { success: true, data: [...], pagination: {...} }
+      // We need to return the whole structure, not just res.data.data
+      return res.data;
+    }),
+    keepPreviousData: true,
+    staleTime: 300000
   });
 };
 
-// Get section by ID
-export const useSectionById = (id) => {
+export const useSection = (id) => {
   return useQuery({
     queryKey: ['section', id],
     queryFn: () => sectionService.getById(id).then(res => res.data.data),
     enabled: !!id,
-    staleTime: 600000
+    staleTime: 300000
   });
 };
 
-// Create new section
 export const useCreateSection = () => {
   const queryClient = useQueryClient();
   
@@ -39,7 +41,6 @@ export const useCreateSection = () => {
   });
 };
 
-// Update section
 export const useUpdateSection = () => {
   const queryClient = useQueryClient();
   
@@ -57,7 +58,6 @@ export const useUpdateSection = () => {
   });
 };
 
-// Delete section
 export const useDeleteSection = () => {
   const queryClient = useQueryClient();
   
@@ -65,11 +65,28 @@ export const useDeleteSection = () => {
     mutationFn: sectionService.delete,
     onSuccess: () => {
       queryClient.invalidateQueries(['sections']);
-      queryClient.invalidateQueries(['users']);
       toast.success('Section supprimée avec succès');
     },
     onError: (error) => {
       const message = error.response?.data?.message || 'Erreur lors de la suppression de la section';
+      toast.error(message);
+    }
+  });
+};
+
+export const useAssignUsersToSection = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ id, userIds }) => sectionService.assignUsers(id, userIds),
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries(['sections']);
+      queryClient.invalidateQueries(['section', variables.id]);
+      queryClient.invalidateQueries(['users']);
+      toast.success('Utilisateurs assignés avec succès');
+    },
+    onError: (error) => {
+      const message = error.response?.data?.message || 'Erreur lors de l\'assignation des utilisateurs';
       toast.error(message);
     }
   });

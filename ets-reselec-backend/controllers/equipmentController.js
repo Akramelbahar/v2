@@ -1,6 +1,6 @@
 const { validationResult } = require('express-validator');
 const { Op } = require('sequelize');
-const { Equipment, Client, User, Intervention, sequelize } = require('../models');
+const { Equipment, Client, User, Intervention, Role, sequelize } = require('../models');
 const { sendSuccess, sendError, sendPaginatedResponse } = require('../utils/responseUtils');
 
 // GET /api/equipment
@@ -19,6 +19,16 @@ const getAllEquipment = async (req, res) => {
     
     const offset = (page - 1) * limit;
     const whereClause = {};
+
+    // Get current user with role
+    const currentUser = await User.findByPk(req.userId, {
+      include: [{
+        model: Role,
+        as: 'role'
+      }]
+    });
+
+    const isAdmin = currentUser.role?.nom === 'Administrateur';
 
     // Search filter
     if (search) {
@@ -39,26 +49,33 @@ const getAllEquipment = async (req, res) => {
       whereClause.proprietaire_id = proprietaire_id;
     }
 
+    // Build include configuration
+    const includeConfig = [
+      {
+        model: Client,
+        as: 'proprietaire',
+        attributes: ['id', 'nom_entreprise']
+      },
+      {
+        model: User,
+        as: 'ajouterPar',
+        attributes: ['id', 'nom', 'section_id'],
+        // Filter by section for non-admin users
+        where: !isAdmin && currentUser.section_id ? 
+          { section_id: currentUser.section_id } : 
+          {}
+      }
+    ];
+
     // Status filter (based on latest intervention status)
-    let having = null;
+    let having = '';
     if (status) {
       having = sequelize.literal(`latestInterventionStatus = '${status}'`);
     }
 
-    const queryOptions = {
+    const { count, rows } = await Equipment.findAndCountAll({
       where: whereClause,
-      include: [
-        {
-          model: Client,
-          as: 'proprietaire',
-          attributes: ['id', 'nom_entreprise']
-        },
-        {
-          model: User,
-          as: 'ajouterPar',
-          attributes: ['id', 'nom']
-        }
-      ],
+      include: includeConfig,
       attributes: {
         include: [
           [
@@ -81,17 +98,12 @@ const getAllEquipment = async (req, res) => {
           ]
         ]
       },
+      having,
       limit: parseInt(limit),
       offset: parseInt(offset),
-      order: [[sortBy, sortOrder]]
-    };
-
-    // Add having clause if status filter is applied
-    if (having) {
-      queryOptions.having = having;
-    }
-
-    const { count, rows } = await Equipment.findAndCountAll(queryOptions);
+      order: [[sortBy, sortOrder]],
+      distinct: true
+    });
 
     sendPaginatedResponse(res, rows, page, limit, count);
 
@@ -106,6 +118,16 @@ const getEquipmentById = async (req, res) => {
   try {
     const { id } = req.params;
 
+    // Get current user with role
+    const currentUser = await User.findByPk(req.userId, {
+      include: [{
+        model: Role,
+        as: 'role'
+      }]
+    });
+
+    const isAdmin = currentUser.role?.nom === 'Administrateur';
+
     const equipment = await Equipment.findByPk(id, {
       include: [
         {
@@ -116,7 +138,7 @@ const getEquipmentById = async (req, res) => {
         {
           model: User,
           as: 'ajouterPar',
-          attributes: ['id', 'nom', 'username']
+          attributes: ['id', 'nom', 'username', 'section_id']
         },
         {
           model: Intervention,
@@ -125,7 +147,7 @@ const getEquipmentById = async (req, res) => {
           include: [{
             model: User,
             as: 'creerPar',
-            attributes: ['nom']
+            attributes: ['nom', 'section_id']
           }],
           order: [['date', 'DESC']],
           limit: 10
@@ -135,6 +157,11 @@ const getEquipmentById = async (req, res) => {
 
     if (!equipment) {
       return sendError(res, 'Equipment not found', 404);
+    }
+
+    // Check if user can access this equipment (based on creator's section)
+    if (!isAdmin && currentUser.section_id && equipment.ajouterPar.section_id !== currentUser.section_id) {
+      return sendError(res, 'Access denied. Equipment belongs to another section.', 403);
     }
 
     // Get maintenance history statistics
@@ -218,9 +245,31 @@ const updateEquipment = async (req, res) => {
 
     const { id } = req.params;
 
-    const equipment = await Equipment.findByPk(id);
+    // Get current user with role
+    const currentUser = await User.findByPk(req.userId, {
+      include: [{
+        model: Role,
+        as: 'role'
+      }]
+    });
+
+    const isAdmin = currentUser.role?.nom === 'Administrateur';
+
+    const equipment = await Equipment.findByPk(id, {
+      include: [{
+        model: User,
+        as: 'ajouterPar',
+        attributes: ['id', 'section_id']
+      }]
+    });
+
     if (!equipment) {
       return sendError(res, 'Equipment not found', 404);
+    }
+
+    // Check if user can update this equipment
+    if (!isAdmin && currentUser.section_id && equipment.ajouterPar.section_id !== currentUser.section_id) {
+      return sendError(res, 'Access denied. Equipment belongs to another section.', 403);
     }
 
     // If changing owner, verify new client exists
@@ -263,9 +312,31 @@ const deleteEquipment = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const equipment = await Equipment.findByPk(id);
+    // Get current user with role
+    const currentUser = await User.findByPk(req.userId, {
+      include: [{
+        model: Role,
+        as: 'role'
+      }]
+    });
+
+    const isAdmin = currentUser.role?.nom === 'Administrateur';
+
+    const equipment = await Equipment.findByPk(id, {
+      include: [{
+        model: User,
+        as: 'ajouterPar',
+        attributes: ['id', 'section_id']
+      }]
+    });
+
     if (!equipment) {
       return sendError(res, 'Equipment not found', 404);
+    }
+
+    // Check if user can delete this equipment
+    if (!isAdmin && currentUser.section_id && equipment.ajouterPar.section_id !== currentUser.section_id) {
+      return sendError(res, 'Access denied. Equipment belongs to another section.', 403);
     }
 
     // Check for active interventions
@@ -298,20 +369,12 @@ const deleteEquipment = async (req, res) => {
 // GET /api/equipment/types
 const getEquipmentTypes = async (req, res) => {
   try {
-    // Since we don't have a separate TypeEquipement_enum table, 
-    // we'll return the predefined types from the model validation
-    const types = [
-      'MOTEUR_ELECTRIQUE',
-      'TRANSFORMATEUR',
-      'GENERATEUR',
-      'POMPE_INDUSTRIELLE',
-      'VENTILATEUR',
-      'COMPRESSEUR',
-      'AUTOMATE',
-      'TABLEAU_ELECTRIQUE'
-    ];
+    const types = await sequelize.query(
+      'SELECT value FROM TypeEquipement_enum ORDER BY value',
+      { type: sequelize.QueryTypes.SELECT }
+    );
 
-    sendSuccess(res, types);
+    sendSuccess(res, types.map(t => t.value));
 
   } catch (error) {
     console.error('Get equipment types error:', error);

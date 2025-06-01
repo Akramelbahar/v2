@@ -136,7 +136,11 @@ app.get('/api/docs', (req, res) => {
     }
   });
 });
+// Import routes (add this line)
+const sectionRoutes = require('./routes/sections');
 
+// API routes (add this line)
+app.use('/api/sections', sectionRoutes);
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({
