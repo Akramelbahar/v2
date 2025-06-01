@@ -1,8 +1,7 @@
-// ets-reselec-backend/routes/roles.js
 const express = require('express');
 const router = express.Router();
 const { verifyToken, checkRole } = require('../middleware/auth');
-const { body, param } = require('express-validator');
+const { roleValidations, permissionValidations, queryValidations, idValidation } = require('../middleware/validation');
 const {
   getAllRoles,
   getRoleById,
@@ -10,61 +9,48 @@ const {
   updateRole,
   deleteRole,
   getAllPermissions,
-  updateRolePermissions,
-  getUsersByRole
+  createPermission,
+  updatePermission,
+  deletePermission,
+  assignPermissionsToRole
 } = require('../controllers/roleController');
-
-// Role validations
-const roleValidations = {
-  create: [
-    body('nom')
-      .notEmpty()
-      .withMessage('Role name is required')
-      .isLength({ min: 3, max: 100 })
-      .withMessage('Role name must be between 3 and 100 characters')
-  ],
-
-  update: [
-    param('id')
-      .isInt({ min: 1 })
-      .withMessage('Invalid role ID'),
-    
-    body('nom')
-      .optional()
-      .notEmpty()
-      .withMessage('Role name cannot be empty')
-      .isLength({ min: 3, max: 100 })
-      .withMessage('Role name must be between 3 and 100 characters')
-  ],
-
-  updatePermissions: [
-    param('id')
-      .isInt({ min: 1 })
-      .withMessage('Invalid role ID'),
-    
-    body('permission_ids')
-      .isArray()
-      .withMessage('Permission IDs must be an array'),
-    
-    body('permission_ids.*')
-      .isInt({ min: 1 })
-      .withMessage('Each permission ID must be a positive integer')
-  ]
-};
 
 // All routes require authentication and admin role
 router.use(verifyToken);
-router.use(checkRole('Admin', 'Administrateur'));
+router.use(checkRole('Administrateur', 'Admin'));
 
-// GET /api/roles/permissions - List all permissions (moved up to avoid conflict with /:id)
-router.get('/permissions', getAllPermissions);
+// Permission routes (placed before parameterized routes)
+// GET /api/roles/permissions/all - Get all permissions
+router.get('/permissions/all', getAllPermissions);
 
-// GET /api/roles - List all roles
-router.get('/', getAllRoles);
+// POST /api/roles/permissions - Create new permission
+router.post('/permissions',
+  permissionValidations.create,
+  createPermission
+);
+
+// PUT /api/roles/permissions/:id - Update permission
+router.put('/permissions/:id',
+  permissionValidations.update,
+  updatePermission
+);
+
+// DELETE /api/roles/permissions/:id - Delete permission
+router.delete('/permissions/:id',
+  idValidation,
+  deletePermission
+);
+
+// Role routes
+// GET /api/roles - List roles with pagination
+router.get('/', 
+  queryValidations.pagination,
+  getAllRoles
+);
 
 // GET /api/roles/:id - Get role details
 router.get('/:id', 
-  param('id').isInt({ min: 1 }).withMessage('Invalid role ID'),
+  idValidation,
   getRoleById
 );
 
@@ -82,20 +68,15 @@ router.put('/:id',
 
 // DELETE /api/roles/:id - Delete role
 router.delete('/:id',
-  param('id').isInt({ min: 1 }).withMessage('Invalid role ID'),
+  idValidation,
   deleteRole
 );
 
-// PUT /api/roles/:id/permissions - Update role permissions
-router.put('/:id/permissions',
-  roleValidations.updatePermissions,
-  updateRolePermissions
-);
-
-// GET /api/roles/:id/users - Get users with specific role
-router.get('/:id/users',
-  param('id').isInt({ min: 1 }).withMessage('Invalid role ID'),
-  getUsersByRole
+// POST /api/roles/:id/permissions - Assign permissions to role
+router.post('/:id/permissions',
+  idValidation,
+  roleValidations.assignPermissions,
+  assignPermissionsToRole
 );
 
 module.exports = router;

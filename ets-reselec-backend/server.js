@@ -1,4 +1,3 @@
-// ets-reselec-backend/server.js
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -13,8 +12,8 @@ const clientRoutes = require('./routes/clients');
 const equipmentRoutes = require('./routes/equipment');
 const interventionRoutes = require('./routes/interventions');
 const dashboardRoutes = require('./routes/dashboard');
-const userRoutes = require('./routes/users');
 const roleRoutes = require('./routes/roles');
+const userRoutes = require('./routes/users');
 
 const app = express();
 
@@ -49,8 +48,8 @@ app.use('/api/clients', clientRoutes);
 app.use('/api/equipment', equipmentRoutes);
 app.use('/api/interventions', interventionRoutes);
 app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/users', userRoutes);
 app.use('/api/roles', roleRoutes);
+app.use('/api/users', userRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -111,26 +110,28 @@ app.get('/api/docs', (req, res) => {
         'GET /api/dashboard/charts': 'Get chart data',
         'GET /api/dashboard/performance': 'Get performance metrics'
       },
-      users: {
-        'GET /api/users': 'List users (Admin only)',
-        'GET /api/users/:id': 'Get user details (Admin only)',
-        'POST /api/users': 'Create new user (Admin only)',
-        'PUT /api/users/:id': 'Update user (Admin only)',
-        'DELETE /api/users/:id': 'Delete user (Admin only)',
-        'PUT /api/users/:id/role': 'Update user role (Admin only)',
-        'POST /api/users/:id/reset-password': 'Reset user password (Admin only)',
-        'PUT /api/users/:id/status': 'Enable/disable user (Admin only)',
-        'GET /api/users/:id/permissions': 'Get user permissions (Admin only)'
-      },
       roles: {
-        'GET /api/roles': 'List all roles (Admin only)',
-        'GET /api/roles/:id': 'Get role details (Admin only)',
-        'POST /api/roles': 'Create new role (Admin only)',
-        'PUT /api/roles/:id': 'Update role (Admin only)',
-        'DELETE /api/roles/:id': 'Delete role (Admin only)',
-        'GET /api/permissions': 'List all permissions (Admin only)',
-        'PUT /api/roles/:id/permissions': 'Update role permissions (Admin only)',
-        'GET /api/roles/:id/users': 'Get users with role (Admin only)'
+        'GET /api/roles': 'List roles with pagination',
+        'GET /api/roles/:id': 'Get role details',
+        'POST /api/roles': 'Create new role',
+        'PUT /api/roles/:id': 'Update role',
+        'DELETE /api/roles/:id': 'Delete role',
+        'GET /api/roles/permissions/all': 'Get all permissions',
+        'POST /api/roles/permissions': 'Create new permission',
+        'PUT /api/roles/permissions/:id': 'Update permission',
+        'DELETE /api/roles/permissions/:id': 'Delete permission',
+        'POST /api/roles/:id/permissions': 'Assign permissions to role'
+      },
+      users: {
+        'GET /api/users': 'List users with pagination and search',
+        'GET /api/users/stats': 'Get user statistics',
+        'GET /api/users/roles': 'Get all roles for dropdowns',
+        'GET /api/users/:id': 'Get user details',
+        'POST /api/users': 'Create new user',
+        'PUT /api/users/:id': 'Update user information',
+        'PUT /api/users/:id/role': 'Update user role',
+        'PUT /api/users/:id/password': 'Update user password',
+        'DELETE /api/users/:id': 'Delete user'
       }
     }
   });

@@ -96,34 +96,31 @@ const clientValidations = {
       .withMessage('City cannot exceed 100 characters'),
     
     body('codePostal')
-      .optional({ checkFalsy: true })
-      .matches(/^$|^[0-9A-Za-z\s\-]{2,20}$/)
-      .withMessage('Postal code must contain only letters, numbers, spaces or hyphens (2-20 chars)'),
+      .optional()
+      .matches(/^[0-9A-Za-z\s\-]{2,20}$/)
+      .withMessage('Invalid postal code format'),
     
     body('tel')
-      .optional({ checkFalsy: true })
-      .matches(/^$|^[\d\s\-\+\(\)\.]{8,20}$/)
-      .withMessage('Phone number must contain 8-20 digits with optional formatting'),
+      .optional()
+      .matches(/^[\d\s\-\+\(\)\.]{8,20}$/)
+      .withMessage('Invalid phone number format'),
     
     body('email')
-      .optional({ checkFalsy: true })
-      .normalizeEmail()
+      .optional()
       .isEmail()
-      .withMessage('Please provide a valid email address'),
+      .withMessage('Invalid email format')
+      .normalizeEmail(),
     
     body('email_contact')
-      .optional({ checkFalsy: true })
-      .normalizeEmail()
+      .optional()
       .isEmail()
-      .withMessage('Please provide a valid contact email address'),
+      .withMessage('Invalid contact email format')
+      .normalizeEmail(),
     
     body('siteWeb')
-      .optional({ checkFalsy: true })
-      .isURL({
-        require_protocol: true,
-        protocols: ['http', 'https']
-      })
-      .withMessage('Please provide a valid URL including http:// or https://')
+      .optional()
+      .isURL()
+      .withMessage('Invalid website URL format')
   ],
 
   update: [
@@ -139,16 +136,16 @@ const clientValidations = {
       .withMessage('Company name must be between 2 and 255 characters'),
     
     body('email')
-      .optional({ checkFalsy: true })
-      .normalizeEmail()
+      .optional()
       .isEmail()
-      .withMessage('Please provide a valid email address'),
+      .withMessage('Invalid email format')
+      .normalizeEmail(),
     
     body('email_contact')
-      .optional({ checkFalsy: true })
-      .normalizeEmail()
+      .optional()
       .isEmail()
-      .withMessage('Please provide a valid contact email address')
+      .withMessage('Invalid contact email format')
+      .normalizeEmail()
   ],
 
   delete: [
@@ -357,6 +354,123 @@ const interventionValidations = {
   ]
 };
 
+// Role validations
+const roleValidations = {
+  create: [
+    body('nom')
+      .notEmpty()
+      .withMessage('Role name is required')
+      .isLength({ min: 2, max: 100 })
+      .withMessage('Role name must be between 2 and 100 characters')
+      .matches(/^[a-zA-ZÀ-ÿ0-9\s\-_]+$/)
+      .withMessage('Role name can only contain letters, numbers, spaces, hyphens and underscores'),
+    
+    body('permissions')
+      .optional()
+      .isArray()
+      .withMessage('Permissions must be an array'),
+    
+    body('permissions.*')
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage('Each permission must be a valid ID')
+  ],
+
+  update: [
+    param('id')
+      .isInt({ min: 1 })
+      .withMessage('Invalid role ID'),
+    
+    body('nom')
+      .optional()
+      .notEmpty()
+      .withMessage('Role name cannot be empty')
+      .isLength({ min: 2, max: 100 })
+      .withMessage('Role name must be between 2 and 100 characters')
+      .matches(/^[a-zA-ZÀ-ÿ0-9\s\-_]+$/)
+      .withMessage('Role name can only contain letters, numbers, spaces, hyphens and underscores'),
+    
+    body('permissions')
+      .optional()
+      .isArray()
+      .withMessage('Permissions must be an array'),
+    
+    body('permissions.*')
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage('Each permission must be a valid ID')
+  ],
+
+  assignPermissions: [
+    param('id')
+      .isInt({ min: 1 })
+      .withMessage('Invalid role ID'),
+    
+    body('permissions')
+      .isArray()
+      .withMessage('Permissions must be an array'),
+    
+    body('permissions.*')
+      .isInt({ min: 1 })
+      .withMessage('Each permission must be a valid ID')
+  ]
+};
+
+// Permission validations
+const permissionValidations = {
+  create: [
+    body('module')
+      .notEmpty()
+      .withMessage('Module is required')
+      .isLength({ min: 2, max: 100 })
+      .withMessage('Module must be between 2 and 100 characters')
+      .matches(/^[a-zA-Z_]+$/)
+      .withMessage('Module can only contain letters and underscores'),
+    
+    body('action')
+      .notEmpty()
+      .withMessage('Action is required')
+      .isLength({ min: 2, max: 100 })
+      .withMessage('Action must be between 2 and 100 characters')
+      .matches(/^[a-zA-Z_]+$/)
+      .withMessage('Action can only contain letters and underscores'),
+    
+    body('description')
+      .optional()
+      .isLength({ max: 500 })
+      .withMessage('Description cannot exceed 500 characters')
+  ],
+
+  update: [
+    param('id')
+      .isInt({ min: 1 })
+      .withMessage('Invalid permission ID'),
+    
+    body('module')
+      .optional()
+      .notEmpty()
+      .withMessage('Module cannot be empty')
+      .isLength({ min: 2, max: 100 })
+      .withMessage('Module must be between 2 and 100 characters')
+      .matches(/^[a-zA-Z_]+$/)
+      .withMessage('Module can only contain letters and underscores'),
+    
+    body('action')
+      .optional()
+      .notEmpty()
+      .withMessage('Action cannot be empty')
+      .isLength({ min: 2, max: 100 })
+      .withMessage('Action must be between 2 and 100 characters')
+      .matches(/^[a-zA-Z_]+$/)
+      .withMessage('Action can only contain letters and underscores'),
+    
+    body('description')
+      .optional()
+      .isLength({ max: 500 })
+      .withMessage('Description cannot exceed 500 characters')
+  ]
+};
+
 // Query parameter validations
 const queryValidations = {
   pagination: [
@@ -408,6 +522,8 @@ module.exports = {
   clientValidations,
   equipmentValidations,
   interventionValidations,
+  roleValidations,
+  permissionValidations,
   queryValidations,
   idValidation
 };
