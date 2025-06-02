@@ -1,0 +1,302 @@
+# ETS RESELEC Backend API Documentation
+
+## Overview
+The ETS RESELEC API provides section-based access control where users can only see and manage data from their assigned section, while administrators have full access across all sections.
+
+## Authentication & Authorization
+
+### Roles
+- **Administrateur**: Full access to all data and management functions
+- **Regular Users**: Section-restricted access only
+
+### Section-Based Access Control
+- Equipment: Users can only access equipment added by users from their section
+- Interventions: Users can only access interventions created by users from their section
+- Dashboard: Statistics filtered by user's section (except for admins)
+
+## API Endpoints
+
+### Authentication
+```
+POST   /api/auth/login           - User login
+POST   /api/auth/register        - User registration  
+GET    /api/auth/profile         - Get current user profile
+PUT    /api/auth/profile         - Update user profile
+POST   /api/auth/refresh-token   - Refresh JWT token
+POST   /api/auth/logout          - User logout
+```
+
+### Users Management
+```
+GET    /api/users                    - List users (Admin only)
+GET    /api/users/without-section    - Get unassigned users (Admin only)
+GET    /api/users/:id                - Get user details (Admin only)
+POST   /api/users                    - Create user (Admin only)
+PUT    /api/users/:id                - Update user (Admin only)
+PUT    /api/users/:id/section        - Update user section (Admin only)
+DELETE /api/users/:id                - Delete user (Admin only)
+POST   /api/users/:id/reset-password - Reset password (Admin only)
+PUT    /api/users/:id/toggle-status  - Toggle user status (Admin only)
+```
+
+### Sections Management
+```
+GET    /api/sections                      - List all sections
+GET    /api/sections/:id                  - Get section details
+GET    /api/sections/:id/users            - Get section users
+GET    /api/sections/:id/interventions    - Get section interventions
+GET    /api/sections/:id/equipment        - Get section equipment
+GET    /api/sections/:id/stats            - Get section statistics
+
+POST   /api/sections                      - Create section (Admin only)
+PUT    /api/sections/:id                  - Update section (Admin only)
+PUT    /api/sections/:id/users/:userId    - Assign user to section (Admin only)
+DELETE /api/sections/:id/users/:userId    - Remove user from section (Admin only)
+PUT    /api/sections/:id/manager          - Set section manager (Admin only)
+DELETE /api/sections/:id                  - Delete section (Admin only)
+```
+
+### Clients
+```
+GET    /api/clients              - List clients
+GET    /api/clients/sectors      - Get business sectors
+GET    /api/clients/:id          - Get client details
+POST   /api/clients              - Create client
+PUT    /api/clients/:id          - Update client
+DELETE /api/clients/:id          - Delete client (Admin only)
+```
+
+### Equipment (Section-Based Access)
+```
+GET    /api/equipment            - List equipment (filtered by section)
+GET    /api/equipment/types      - Get equipment types
+GET    /api/equipment/:id        - Get equipment details (section access check)
+POST   /api/equipment            - Create equipment
+PUT    /api/equipment/:id        - Update equipment (section access check)
+DELETE /api/equipment/:id        - Delete equipment (section access check, Admin only)
+```
+
+### Interventions (Section-Based Access)
+```
+GET    /api/interventions                          - List interventions (filtered by section)
+GET    /api/interventions/status-counts            - Get status counts
+GET    /api/interventions/:id                      - Get intervention details (section access check)
+POST   /api/interventions                          - Create intervention
+GET    /api/interventions/:id/workflow             - Get workflow status
+POST   /api/interventions/:id/diagnostic           - Create/update diagnostic
+PUT    /api/interventions/:id/planification        - Update planning
+POST   /api/interventions/:id/controle-qualite     - Add quality control
+PUT    /api/interventions/:id/status               - Update status
+```
+
+### Dashboard (Section-Based Access)
+```
+GET    /api/dashboard/stats                - Get dashboard statistics (filtered by section)
+GET    /api/dashboard/recent-interventions - Get recent interventions (filtered by section)
+GET    /api/dashboard/alerts               - Get alerts and notifications
+GET    /api/dashboard/charts               - Get chart data
+GET    /api/dashboard/performance          - Get performance metrics
+```
+
+### Roles & Permissions
+```
+GET    /api/roles                    - List all roles
+GET    /api/roles/:id                - Get role details
+POST   /api/roles                    - Create role (Admin only)
+PUT    /api/roles/:id                - Update role (Admin only)
+DELETE /api/roles/:id                - Delete role (Admin only)
+POST   /api/roles/:id/permissions    - Assign permissions (Admin only)
+GET    /api/roles/permissions/all    - List all permissions
+```
+
+## Data Models
+
+### User Response Format
+```json
+{
+  "id": 1,
+  "nom": "User Name",
+  "username": "username",
+  "role_id": 5,
+  "section_id": 6,
+  "enabled": true,
+  "role": {
+    "id": 5,
+    "nom": "Administrateur"
+  },
+  "section": {
+    "id": 6,
+    "nom": "Administration",
+    "type": "Administrative",
+    "responsable_id": 1,
+    "isResponsible": false
+  },
+  "permissions": ["clients:read", "clients:create", ...]
+}
+```
+
+### Section Response Format
+```json
+{
+  "id": 6,
+  "nom": "Administration",
+  "type": "Administrative",
+  "responsable_id": 1,
+  "responsable": {
+    "id": 1,
+    "nom": "Manager Name",
+    "username": "manager"
+  },
+  "userCount": 5,
+  "stats": {
+    "user_count": 5,
+    "total_interventions": 25,
+    "active_interventions": 8,
+    "completed_interventions": 17,
+    "urgent_interventions": 3,
+    "equipment_count": 12,
+    "client_count": 8
+  }
+}
+```
+
+### Equipment Response Format (with Section Info)
+```json
+{
+  "id": 1,
+  "nom": "Equipment Name",
+  "marque": "Brand",
+  "modele": "Model",
+  "type_equipement": "MOTEUR_ELECTRIQUE",
+  "proprietaire": {
+    "id": 1,
+    "nom_entreprise": "Client Company"
+  },
+  "ajouterPar": {
+    "id": 5,
+    "nom": "Creator Name",
+    "section_id": 6
+  },
+  "interventionCount": 3,
+  "latestInterventionStatus": "TERMINEE"
+}
+```
+
+### Intervention Response Format (with Section Info)
+```json
+{
+  "id": 1,
+  "date": "2025-05-27",
+  "description": "Intervention description",
+  "statut": "EN_COURS",
+  "urgence": false,
+  "equipement": {
+    "id": 1,
+    "nom": "Equipment Name",
+    "proprietaire": {
+      "nom_entreprise": "Client Company"
+    }
+  },
+  "creerPar": {
+    "id": 5,
+    "nom": "Creator Name",
+    "section_id": 6
+  }
+}
+```
+
+## Access Control Behavior
+
+### For Admin Users (`role.nom === 'Administrateur'`)
+- All endpoints return complete data across all sections
+- No filtering applied
+- Full CRUD access to all resources
+- Can manage users and sections
+
+### For Regular Users
+- Equipment endpoints only return equipment added by users from their section
+- Intervention endpoints only return interventions created by users from their section
+- Dashboard shows section-filtered statistics
+- 403 Forbidden when trying to access other sections' data
+- Cannot access user/section management endpoints
+
+### Error Responses
+```json
+// Section access denied
+{
+  "success": false,
+  "message": "Access denied. Equipment belongs to another section."
+}
+
+// Admin-only endpoint
+{
+  "success": false,
+  "message": "Access denied. Admin role required."
+}
+```
+
+## Query Parameters
+
+### Pagination (all list endpoints)
+- `page`: Page number (default: 1)
+- `limit`: Items per page (default: 10, max: 100)
+- `sortBy`: Sort field
+- `sortOrder`: ASC or DESC
+
+### Filtering
+- `search`: Text search in relevant fields
+- `section_id`: Filter by section (admin only)
+- `role_id`: Filter by role
+- `statut`: Filter by status
+- `urgence`: Filter by urgency (true/false)
+- `dateFrom`/`dateTo`: Date range filtering
+
+## Response Format
+
+### Success Response
+```json
+{
+  "success": true,
+  "message": "Operation successful",
+  "data": { ... }
+}
+```
+
+### Paginated Response
+```json
+{
+  "success": true,
+  "data": [ ... ],
+  "pagination": {
+    "page": 1,
+    "limit": 10,
+    "total": 50,
+    "pages": 5
+  }
+}
+```
+
+### Error Response
+```json
+{
+  "success": false,
+  "message": "Error description",
+  "error": "Detailed error (development only)"
+}
+```
+
+## Important Notes for Frontend Integration
+
+1. **Section Filtering is Automatic**: The backend automatically filters data based on user's section. Frontend doesn't need to handle this logic.
+
+2. **Admin Detection**: Check `user.role.nom === 'Administrateur'` to show admin-only features.
+
+3. **Section Management**: Only show section management UI to admin users.
+
+4. **Error Handling**: Handle 403 errors for section access denied scenarios.
+
+5. **User Section Info**: User's section information is included in the auth profile response.
+
+6. **Dashboard Filtering**: Dashboard statistics are automatically section-filtered for non-admin users.
+
+This API structure ensures data isolation between sections while providing administrators with full system visibility and control.
