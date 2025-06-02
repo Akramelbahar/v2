@@ -8,14 +8,11 @@ const {
   createRole,
   updateRole,
   deleteRole,
-  getRolePermissions,
-  updateRolePermissions
+  assignPermissions,
+  getAllPermissions
 } = require('../controllers/roleController');
 
-// All routes require authentication
-router.use(verifyToken);
-
-// Validation rules
+// Role validations
 const roleValidations = {
   create: [
     body('nom')
@@ -24,6 +21,11 @@ const roleValidations = {
       .isLength({ min: 2, max: 100 })
       .withMessage('Role name must be between 2 and 100 characters'),
     
+    body('description')
+      .optional()
+      .isLength({ max: 500 })
+      .withMessage('Description cannot exceed 500 characters'),
+    
     body('permissions')
       .optional()
       .isArray()
@@ -34,7 +36,7 @@ const roleValidations = {
       .isInt({ min: 1 })
       .withMessage('Permission IDs must be positive integers')
   ],
-  
+
   update: [
     param('id')
       .isInt({ min: 1 })
@@ -42,70 +44,84 @@ const roleValidations = {
     
     body('nom')
       .optional()
+      .notEmpty()
+      .withMessage('Role name cannot be empty')
       .isLength({ min: 2, max: 100 })
       .withMessage('Role name must be between 2 and 100 characters'),
     
-    body('permissions')
+    body('description')
       .optional()
+      .isLength({ max: 500 })
+      .withMessage('Description cannot exceed 500 characters')
+  ],
+
+  delete: [
+    param('id')
+      .isInt({ min: 1 })
+      .withMessage('Invalid role ID')
+  ],
+
+  getById: [
+    param('id')
+      .isInt({ min: 1 })
+      .withMessage('Invalid role ID')
+  ],
+
+  assignPermissions: [
+    param('id')
+      .isInt({ min: 1 })
+      .withMessage('Invalid role ID'),
+    
+    body('permissions')
       .isArray()
       .withMessage('Permissions must be an array'),
     
     body('permissions.*')
-      .optional()
       .isInt({ min: 1 })
       .withMessage('Permission IDs must be positive integers')
   ]
 };
 
-// GET /api/roles - List roles
+// All routes require authentication
+router.use(verifyToken);
+
+// GET /api/roles - List all roles (accessible to all authenticated users)
 router.get('/', getAllRoles);
 
-// GET /api/roles/:id - Get role details
-router.get('/:id',
-  param('id').isInt({ min: 1 }).withMessage('Invalid role ID'),
+// GET /api/permissions - List all permissions (accessible to all authenticated users)
+router.get('/permissions', getAllPermissions);
+
+// GET /api/roles/:id - Get role details (accessible to all authenticated users)
+router.get('/:id', 
+  roleValidations.getById,
   getRoleById
 );
 
-// POST /api/roles - Create new role (Admin only)
+// Admin-only routes
+router.use(checkRole('Administrateur', 'Admin'));
+
+// POST /api/roles - Create new role
 router.post('/',
-  checkRole('Administrateur'),
   roleValidations.create,
   createRole
 );
 
-// PUT /api/roles/:id - Update role (Admin only)
+// PUT /api/roles/:id - Update role
 router.put('/:id',
-  checkRole('Administrateur'),
   roleValidations.update,
   updateRole
 );
 
-// DELETE /api/roles/:id - Delete role (Admin only)
+// DELETE /api/roles/:id - Delete role
 router.delete('/:id',
-  checkRole('Administrateur'),
-  param('id').isInt({ min: 1 }).withMessage('Invalid role ID'),
+  roleValidations.delete,
   deleteRole
 );
 
-// GET /api/roles/:id/permissions - Get role permissions
-router.get('/:id/permissions',
-  param('id').isInt({ min: 1 }).withMessage('Invalid role ID'),
-  getRolePermissions
-);
-
-// PUT /api/roles/:id/permissions - Update role permissions (Admin only)
-router.put('/:id/permissions',
-  checkRole('Administrateur'),
-  [
-    param('id').isInt({ min: 1 }).withMessage('Invalid role ID'),
-    body('permissions')
-      .isArray()
-      .withMessage('Permissions must be an array'),
-    body('permissions.*')
-      .isInt({ min: 1 })
-      .withMessage('Permission IDs must be positive integers')
-  ],
-  updateRolePermissions
+// POST /api/roles/:id/permissions - Assign permissions to role
+router.post('/:id/permissions',
+  roleValidations.assignPermissions,
+  assignPermissions
 );
 
 module.exports = router;

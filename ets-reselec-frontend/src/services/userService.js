@@ -22,14 +22,44 @@ export const userService = {
   delete: (id) => 
     api.delete(`/users/${id}`),
   
-  // Change user password
-  changePassword: (id, newPassword) => 
-    api.put(`/users/${id}/change-password`, { newPassword }),
+  // Update user role
+  updateRole: (id, roleId) => 
+    api.put(`/users/${id}/role`, { role_id: roleId }),
+  
+  // Reset user password
+  resetPassword: (id) => 
+    api.post(`/users/${id}/reset-password`),
+  
+  // Toggle user status (enable/disable)
+  updateStatus: (id, enabled) => 
+    api.put(`/users/${id}/status`, { enabled }),
+  
+  // Get user permissions
+  getUserPermissions: (id) => 
+    api.get(`/users/${id}/permissions`),
   
   // Search users
-  search: (query, filters = {}) => 
+  search: (query, params = {}) => 
     api.get('/users', { 
-      params: { search: query, ...filters } 
+      params: { search: query, ...params } 
+    }),
+  
+  // Get users by role
+  getUsersByRole: (roleId, params = {}) => 
+    api.get('/users', { 
+      params: { role_id: roleId, ...params } 
+    }),
+  
+  // Get users by section
+  getUsersBySection: (section, params = {}) => 
+    api.get('/users', { 
+      params: { section, ...params } 
+    }),
+  
+  // Get enabled/disabled users
+  getEnabledUsers: (enabled = true, params = {}) => 
+    api.get('/users', { 
+      params: { enabled: enabled.toString(), ...params } 
     })
 };
 

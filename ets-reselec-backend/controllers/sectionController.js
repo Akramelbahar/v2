@@ -1,38 +1,20 @@
 // ets-reselec-backend/controllers/sectionController.js
 const { validationResult } = require('express-validator');
 const { Op } = require('sequelize');
-const { Section, User, sequelize } = require('../models');
+const { 
+  Section, 
+  User, 
+  Intervention, 
+  Equipment, 
+  Client,
+  sequelize 
+} = require('../models');
 const { sendSuccess, sendError, sendPaginatedResponse } = require('../utils/responseUtils');
 
 // GET /api/sections
 const getAllSections = async (req, res) => {
   try {
-    const { 
-      page = 1, 
-      limit = 10, 
-      search = '', 
-      type,
-      sortBy = 'nom',
-      sortOrder = 'ASC'
-    } = req.query;
-    
-    const offset = (page - 1) * limit;
-    const whereClause = {};
-    
-    if (search) {
-      whereClause[Op.or] = [
-        { nom: { [Op.like]: `%${search}%` } },
-        { type: { [Op.like]: `%${search}%` } }
-      ];
-    }
-
-    if (type) {
-      whereClause.type = type;
-    }
-
-    // Execute query
-    const { count, rows } = await Section.findAndCountAll({
-      where: whereClause,
+    const sections = await Section.findAll({
       include: [
         {
           model: User,
@@ -52,12 +34,10 @@ const getAllSections = async (req, res) => {
           ]
         ]
       },
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      order: [[sortBy, sortOrder]]
+      order: [['nom', 'ASC']]
     });
 
-    sendPaginatedResponse(res, rows, page, limit, count);
+    sendSuccess(res, sections);
 
   } catch (error) {
     console.error('Get sections error:', error);
@@ -80,11 +60,11 @@ const getSectionById = async (req, res) => {
         {
           model: User,
           as: 'utilisateurs',
-          attributes: ['id', 'nom', 'username', 'section'],
+          attributes: ['id', 'nom', 'username'],
           include: [{
-            model: sequelize.models.Role,
+            model: Role,
             as: 'role',
-            attributes: ['id', 'nom']
+            attributes: ['nom']
           }]
         }
       ]
@@ -94,7 +74,13 @@ const getSectionById = async (req, res) => {
       return sendError(res, 'Section not found', 404);
     }
 
-    sendSuccess(res, section);
+    // Get section statistics
+    const stats = await getSectionStats(id);
+
+    sendSuccess(res, {
+      ...section.toJSON(),
+      stats
+    });
 
   } catch (error) {
     console.error('Get section by ID error:', error);
@@ -102,10 +88,161 @@ const getSectionById = async (req, res) => {
   }
 };
 
+// GET /api/sections/:id/users
+const getSectionUsers = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { page = 1, limit = 10 } = req.query;
+    const offset = (page - 1) * limit;
+
+    // Verify section exists
+    const section = await Section.findByPk(id);
+    if (!section) {
+      return sendError(res, 'Section not found', 404);
+    }
+
+    const { count, rows } = await User.findAndCountAll({
+      where: { section_id: id },
+      attributes: { exclude: ['password'] },
+      include: [{
+        model: Role,
+        as: 'role',
+        attributes: ['id', 'nom']
+      }],
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      order: [['nom', 'ASC']]
+    });
+
+    sendPaginatedResponse(res, rows, page, limit, count);
+
+  } catch (error) {
+    console.error('Get section users error:', error);
+    sendError(res, 'Failed to retrieve section users', 500, error.message);
+  }
+};
+
+// GET /api/sections/:id/interventions
+const getSectionInterventions = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { 
+      page = 1, 
+      limit = 10,
+      statut,
+      urgence,
+      dateFrom,
+      dateTo 
+    } = req.query;
+    const offset = (page - 1) * limit;
+
+    // Build where clause
+    const whereClause = {};
+    
+    if (statut) whereClause.statut = statut;
+    if (urgence !== undefined) whereClause.urgence = urgence === 'true';
+    
+    if (dateFrom || dateTo) {
+      whereClause.date = {};
+      if (dateFrom) whereClause.date[Op.gte] = dateFrom;
+      if (dateTo) whereClause.date[Op.lte] = dateTo;
+    }
+
+    // Get interventions created by users in this section
+    const { count, rows } = await Intervention.findAndCountAll({
+      where: whereClause,
+      include: [
+        {
+          model: User,
+          as: 'creerPar',
+          where: { section_id: id },
+          attributes: ['id', 'nom']
+        },
+        {
+          model: Equipment,
+          as: 'equipement',
+          attributes: ['id', 'nom', 'type_equipement'],
+          include: [{
+            model: Client,
+            as: 'proprietaire',
+            attributes: ['id', 'nom_entreprise']
+          }]
+        }
+      ],
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      order: [['date', 'DESC']]
+    });
+
+    sendPaginatedResponse(res, rows, page, limit, count);
+
+  } catch (error) {
+    console.error('Get section interventions error:', error);
+    sendError(res, 'Failed to retrieve section interventions', 500, error.message);
+  }
+};
+
+// GET /api/sections/:id/equipment
+const getSectionEquipment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { page = 1, limit = 10 } = req.query;
+    const offset = (page - 1) * limit;
+
+    // Get equipment that has interventions by this section
+    const equipment = await sequelize.query(`
+      SELECT DISTINCT
+        e.id,
+        e.nom,
+        e.marque,
+        e.modele,
+        e.type_equipement,
+        e.cout,
+        c.nom_entreprise as client_nom,
+        COUNT(DISTINCT i.id) as intervention_count,
+        MAX(i.date) as last_intervention_date
+      FROM Equipement e
+      JOIN Client c ON e.proprietaire_id = c.id
+      JOIN Intervention i ON e.id = i.equipement_id
+      JOIN Utilisateur u ON i.creerPar_id = u.id
+      WHERE u.section_id = :sectionId
+      GROUP BY e.id, e.nom, e.marque, e.modele, e.type_equipement, e.cout, c.nom_entreprise
+      ORDER BY last_intervention_date DESC
+      LIMIT :limit OFFSET :offset
+    `, {
+      replacements: { 
+        sectionId: id,
+        limit: parseInt(limit),
+        offset: parseInt(offset)
+      },
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    // Get total count
+    const countResult = await sequelize.query(`
+      SELECT COUNT(DISTINCT e.id) as total
+      FROM Equipement e
+      JOIN Intervention i ON e.id = i.equipement_id
+      JOIN Utilisateur u ON i.creerPar_id = u.id
+      WHERE u.section_id = :sectionId
+    `, {
+      replacements: { sectionId: id },
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    const total = countResult[0]?.total || 0;
+
+    sendPaginatedResponse(res, equipment, page, limit, total);
+
+  } catch (error) {
+    console.error('Get section equipment error:', error);
+    sendError(res, 'Failed to retrieve section equipment', 500, error.message);
+  }
+};
+
 // POST /api/sections
 const createSection = async (req, res) => {
   try {
-    // Check validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return sendError(res, 'Validation failed', 400, errors.array());
@@ -119,22 +256,20 @@ const createSection = async (req, res) => {
       return sendError(res, 'Section name already exists', 400);
     }
 
-    // Validate responsable exists if provided
+    // Validate responsible user if provided
     if (responsable_id) {
-      const responsable = await User.findByPk(responsable_id);
-      if (!responsable) {
-        return sendError(res, 'Responsible user not found', 404);
+      const user = await User.findByPk(responsable_id);
+      if (!user) {
+        return sendError(res, 'Invalid responsible user', 400);
       }
     }
 
-    // Create section
     const section = await Section.create({
       nom,
       type,
       responsable_id
     });
-    
-    // Reload with associations
+
     const createdSection = await Section.findByPk(section.id, {
       include: [{
         model: User,
@@ -154,7 +289,6 @@ const createSection = async (req, res) => {
 // PUT /api/sections/:id
 const updateSection = async (req, res) => {
   try {
-    // Check validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return sendError(res, 'Validation failed', 400, errors.array());
@@ -168,7 +302,7 @@ const updateSection = async (req, res) => {
       return sendError(res, 'Section not found', 404);
     }
 
-    // Check if new name already exists
+    // Check if new name conflicts with existing
     if (nom && nom !== section.nom) {
       const existingSection = await Section.findOne({ 
         where: { 
@@ -176,30 +310,30 @@ const updateSection = async (req, res) => {
           id: { [Op.ne]: id }
         } 
       });
-      
       if (existingSection) {
         return sendError(res, 'Section name already exists', 400);
       }
     }
 
-    // Validate new responsable if provided
-    if (responsable_id !== undefined && responsable_id !== section.responsable_id) {
+    // Validate responsible user if provided
+    if (responsable_id !== undefined) {
       if (responsable_id) {
-        const responsable = await User.findByPk(responsable_id);
-        if (!responsable) {
-          return sendError(res, 'Responsible user not found', 404);
+        const user = await User.findByPk(responsable_id);
+        if (!user) {
+          return sendError(res, 'Invalid responsible user', 400);
         }
+        
+        // Update the user's section_id to this section
+        await user.update({ section_id: id });
       }
     }
 
-    // Update section
     await section.update({
-      nom: nom || section.nom,
-      type: type !== undefined ? type : section.type,
-      responsable_id: responsable_id !== undefined ? responsable_id : section.responsable_id
+      ...(nom !== undefined && { nom }),
+      ...(type !== undefined && { type }),
+      ...(responsable_id !== undefined && { responsable_id })
     });
 
-    // Reload with associations
     const updatedSection = await Section.findByPk(id, {
       include: [{
         model: User,
@@ -226,11 +360,11 @@ const deleteSection = async (req, res) => {
       return sendError(res, 'Section not found', 404);
     }
 
-    // Check if section has users
+    // Check for users in this section
     const userCount = await User.count({ where: { section_id: id } });
     if (userCount > 0) {
       return sendError(res, 
-        `Cannot delete section. ${userCount} user(s) are assigned to this section.`, 
+        `Cannot delete section. ${userCount} users are assigned to this section.`, 
         400
       );
     }
@@ -245,36 +379,67 @@ const deleteSection = async (req, res) => {
   }
 };
 
-// GET /api/sections/types
-const getSectionTypes = async (req, res) => {
+// GET /api/sections/:id/stats
+const getSectionStatistics = async (req, res) => {
   try {
-    const types = await Section.findAll({
-      attributes: [
-        [sequelize.fn('DISTINCT', sequelize.col('type')), 'type']
-      ],
-      where: {
-        type: { [Op.not]: null }
-      },
-      order: [['type', 'ASC']]
-    });
+    const { id } = req.params;
 
-    const typeList = types
-      .map(t => t.type)
-      .filter(Boolean);
+    const section = await Section.findByPk(id);
+    if (!section) {
+      return sendError(res, 'Section not found', 404);
+    }
 
-    sendSuccess(res, typeList);
+    const stats = await getSectionStats(id);
+
+    sendSuccess(res, stats);
 
   } catch (error) {
-    console.error('Get section types error:', error);
-    sendError(res, 'Failed to retrieve section types', 500, error.message);
+    console.error('Get section statistics error:', error);
+    sendError(res, 'Failed to retrieve section statistics', 500, error.message);
   }
+};
+
+// Helper function to get section statistics
+const getSectionStats = async (sectionId) => {
+  const [statsResult] = await sequelize.query(`
+    SELECT 
+      COUNT(DISTINCT u.id) as user_count,
+      COUNT(DISTINCT i.id) as total_interventions,
+      COUNT(DISTINCT CASE WHEN i.statut IN ('PLANIFIEE', 'EN_COURS', 'EN_ATTENTE_PDR', 'EN_PAUSE') THEN i.id END) as active_interventions,
+      COUNT(DISTINCT CASE WHEN i.statut = 'TERMINEE' THEN i.id END) as completed_interventions,
+      COUNT(DISTINCT CASE WHEN i.urgence = true AND i.statut NOT IN ('TERMINEE', 'ANNULEE') THEN i.id END) as urgent_interventions,
+      COUNT(DISTINCT e.id) as equipment_count,
+      COUNT(DISTINCT c.id) as client_count
+    FROM Section s
+    LEFT JOIN Utilisateur u ON s.id = u.section_id
+    LEFT JOIN Intervention i ON u.id = i.creerPar_id
+    LEFT JOIN Equipement e ON i.equipement_id = e.id
+    LEFT JOIN Client c ON e.proprietaire_id = c.id
+    WHERE s.id = :sectionId
+  `, {
+    replacements: { sectionId },
+    type: sequelize.QueryTypes.SELECT
+  });
+
+  return statsResult || {
+    user_count: 0,
+    total_interventions: 0,
+    active_interventions: 0,
+    completed_interventions: 0,
+    urgent_interventions: 0,
+    equipment_count: 0,
+    client_count: 0
+  };
 };
 
 module.exports = {
   getAllSections,
   getSectionById,
+  getSectionUsers,
+  getSectionInterventions,
+  getSectionEquipment,
   createSection,
   updateSection,
   deleteSection,
-  getSectionTypes
+  getSectionStatistics
 };

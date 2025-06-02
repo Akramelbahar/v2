@@ -2,13 +2,29 @@
 import api from './api';
 
 export const sectionService = {
-  // Get all sections with pagination and filters
+  // Get all sections
   getAll: (params = {}) => 
     api.get('/sections', { params }),
   
   // Get section by ID
   getById: (id) => 
     api.get(`/sections/${id}`),
+  
+  // Get section users
+  getSectionUsers: (id, params = {}) => 
+    api.get(`/sections/${id}/users`, { params }),
+  
+  // Get section interventions
+  getSectionInterventions: (id, params = {}) => 
+    api.get(`/sections/${id}/interventions`, { params }),
+  
+  // Get section equipment
+  getSectionEquipment: (id, params = {}) => 
+    api.get(`/sections/${id}/equipment`, { params }),
+  
+  // Get section statistics
+  getSectionStatistics: (id) => 
+    api.get(`/sections/${id}/stats`),
   
   // Create new section
   create: (data) => 
@@ -22,14 +38,10 @@ export const sectionService = {
   delete: (id) => 
     api.delete(`/sections/${id}`),
   
-  // Get section types
-  getTypes: () => 
-    api.get('/sections/types'),
-  
   // Search sections
-  search: (query, filters = {}) => 
+  search: (query, params = {}) => 
     api.get('/sections', { 
-      params: { search: query, ...filters } 
+      params: { search: query, ...params } 
     })
 };
 

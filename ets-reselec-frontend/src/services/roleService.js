@@ -2,7 +2,7 @@
 import api from './api';
 
 export const roleService = {
-  // Get all roles with pagination and filters
+  // Get all roles with pagination
   getAll: (params = {}) => 
     api.get('/roles', { params }),
   
@@ -22,13 +22,31 @@ export const roleService = {
   delete: (id) => 
     api.delete(`/roles/${id}`),
   
-  // Get role permissions
-  getPermissions: (id) => 
-    api.get(`/roles/${id}/permissions`),
+  // Get all permissions (grouped and ungrouped)
+  getAllPermissions: () => 
+    api.get('/roles/permissions/all'),
   
-  // Update role permissions
-  updatePermissions: (id, permissions) => 
-    api.put(`/roles/${id}/permissions`, { permissions })
+  // Create new permission
+  createPermission: (data) => 
+    api.post('/roles/permissions', data),
+  
+  // Update permission
+  updatePermission: (id, data) => 
+    api.put(`/roles/permissions/${id}`, data),
+  
+  // Delete permission
+  deletePermission: (id) => 
+    api.delete(`/roles/permissions/${id}`),
+  
+  // Assign permissions to role
+  assignPermissionsToRole: (roleId, permissions) => 
+    api.post(`/roles/${roleId}/permissions`, { permissions }),
+  
+  // Search roles
+  search: (query, params = {}) => 
+    api.get('/roles', { 
+      params: { search: query, ...params } 
+    })
 };
 
 export default roleService;
