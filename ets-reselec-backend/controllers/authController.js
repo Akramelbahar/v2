@@ -1,7 +1,8 @@
+// ets-reselec-backend/controllers/authController.js (updated portions)
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { validationResult } = require('express-validator');
-const { User, Role, Permission } = require('../models');
+const { User, Role, Permission, Section } = require('../models');
 const { sendSuccess, sendError } = require('../utils/responseUtils');
 
 // Generate JWT token
@@ -11,43 +12,6 @@ const generateToken = (userId) => {
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRE || '7d' }
   );
-};
-
-// Helper function to get user with complete role and permissions
-const getUserWithRoleAndPermissions = async (userId) => {
-  return await User.findByPk(userId, {
-    attributes: { exclude: ['password'] },
-    include: [{
-      model: Role,
-      as: 'role',
-      include: [{
-        model: Permission,
-        as: 'permissions',
-        attributes: ['id', 'module', 'action', 'description'],
-        through: { attributes: [] } // Exclude junction table attributes
-      }]
-    }]
-  });
-};
-
-// Format user response with proper role and permissions
-const formatUserResponse = (user) => {
-  if (!user) return null;
-  
-  const userObj = user.toJSON();
-  
-  // Format permissions as array of strings (module:action)
-  const permissions = user.role?.permissions?.map(p => `${p.module}:${p.action}`) || [];
-  
-  return {
-    id: userObj.id,
-    nom: userObj.nom,
-    username: userObj.username,
-    section: userObj.section,
-    role: userObj.role?.nom || null,
-    roleId: userObj.role?.id || null,
-    permissions
-  };
 };
 
 // POST /api/auth/login
@@ -61,19 +25,25 @@ const login = async (req, res) => {
 
     const { username, password } = req.body;
 
-    // Find user by username with role and permissions
+    // Find user by username with associations
     const user = await User.findOne({ 
       where: { username },
-      include: [{
-        model: Role,
-        as: 'role',
-        include: [{
-          model: Permission,
-          as: 'permissions',
-          attributes: ['id', 'module', 'action', 'description'],
-          through: { attributes: [] }
-        }]
-      }]
+      include: [
+        {
+          model: Role,
+          as: 'role',
+          include: [{
+            model: Permission,
+            as: 'permissions',
+            attributes: ['module', 'action']
+          }]
+        },
+        {
+          model: Section,
+          as: 'section',
+          attributes: ['id', 'nom', 'type', 'responsable_id']
+        }
+      ]
     });
 
     if (!user) {
@@ -89,12 +59,27 @@ const login = async (req, res) => {
     // Generate token
     const token = user.generateToken();
 
-    // Format user data
-    const userData = formatUserResponse(user);
+    // Format permissions
+    const permissions = user.role?.permissions?.map(p => `${p.module}:${p.action}`) || [];
+
+    // Check if user is section responsible
+    const isSectionResponsible = user.section && user.section.responsable_id === user.id;
 
     sendSuccess(res, {
       token,
-      user: userData
+      user: {
+        id: user.id,
+        nom: user.nom,
+        username: user.username,
+        section: user.section ? {
+          id: user.section.id,
+          nom: user.section.nom,
+          type: user.section.type,
+          isResponsible: isSectionResponsible
+        } : null,
+        role: user.role?.nom,
+        permissions
+      }
     }, 'Login successful');
 
   } catch (error) {
@@ -106,12 +91,13 @@ const login = async (req, res) => {
 // POST /api/auth/register
 const register = async (req, res) => {
   try {
+    // Check validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return sendError(res, 'Validation failed', 400, errors.array());
     }
 
-    const { nom, username, password, section, role_id, section_id } = req.body;
+    const { nom, username, password, section_id, role_id } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findOne({ where: { username } });
@@ -129,8 +115,8 @@ const register = async (req, res) => {
 
     // Validate section exists
     if (section_id) {
-      const sectionExists = await Section.findByPk(section_id);
-      if (!sectionExists) {
+      const section = await Section.findByPk(section_id);
+      if (!section) {
         return sendError(res, 'Invalid section specified', 400);
       }
     }
@@ -140,12 +126,35 @@ const register = async (req, res) => {
       nom,
       username,
       password,
-      section,
-      role_id: role_id || 1,
-      section_id
+      section_id,
+      role_id: role_id || 1 // Default to basic role
     });
 
-    // Rest of the function remains the same...
+    // Reload with associations
+    const createdUser = await User.findByPk(user.id, {
+      attributes: { exclude: ['password'] },
+      include: [
+        {
+          model: Role,
+          as: 'role',
+          attributes: ['id', 'nom']
+        },
+        {
+          model: Section,
+          as: 'section',
+          attributes: ['id', 'nom', 'type']
+        }
+      ]
+    });
+
+    // Generate token
+    const token = user.generateToken();
+
+    sendSuccess(res, {
+      token,
+      user: createdUser
+    }, 'User registered successfully', 201);
+
   } catch (error) {
     console.error('Registration error:', error);
     sendError(res, 'Registration failed', 500, error.message);
@@ -155,13 +164,56 @@ const register = async (req, res) => {
 // GET /api/auth/profile
 const getProfile = async (req, res) => {
   try {
-    const user = await getUserWithRoleAndPermissions(req.userId);
+    const user = await User.findByPk(req.userId, {
+      attributes: { exclude: ['password'] },
+      include: [
+        {
+          model: Role,
+          as: 'role',
+          include: [{
+            model: Permission,
+            as: 'permissions',
+            attributes: ['id', 'module', 'action', 'description']
+          }]
+        },
+        {
+          model: Section,
+          as: 'section',
+          attributes: ['id', 'nom', 'type', 'responsable_id'],
+          include: [{
+            model: User,
+            as: 'responsable',
+            attributes: ['id', 'nom']
+          }]
+        }
+      ]
+    });
 
     if (!user) {
       return sendError(res, 'User not found', 404);
     }
 
-    const userData = formatUserResponse(user);
+    // Check if user is section responsible
+    const isSectionResponsible = user.section && user.section.responsable_id === user.id;
+
+    // Format response
+    const userData = {
+      id: user.id,
+      nom: user.nom,
+      username: user.username,
+      section: user.section ? {
+        id: user.section.id,
+        nom: user.section.nom,
+        type: user.section.type,
+        responsable: user.section.responsable,
+        isResponsible: isSectionResponsible
+      } : null,
+      role: {
+        id: user.role?.id,
+        nom: user.role?.nom,
+        permissions: user.role?.permissions || []
+      }
+    };
 
     sendSuccess(res, userData, 'Profile retrieved successfully');
 
@@ -180,7 +232,7 @@ const updateProfile = async (req, res) => {
       return sendError(res, 'Validation failed', 400, errors.array());
     }
 
-    const { nom, section, currentPassword, newPassword } = req.body;
+    const { nom, section_id, currentPassword, newPassword } = req.body;
     
     const user = await User.findByPk(req.userId);
     if (!user) {
@@ -189,7 +241,17 @@ const updateProfile = async (req, res) => {
 
     // Update basic fields
     if (nom !== undefined) user.nom = nom;
-    if (section !== undefined) user.section = section;
+    
+    // Update section if provided and valid
+    if (section_id !== undefined) {
+      if (section_id) {
+        const section = await Section.findByPk(section_id);
+        if (!section) {
+          return sendError(res, 'Invalid section specified', 400);
+        }
+      }
+      user.section_id = section_id;
+    }
     
     // Handle password change
     if (currentPassword && newPassword) {
@@ -202,11 +264,23 @@ const updateProfile = async (req, res) => {
     
     await user.save();
 
-    // Get updated user with role and permissions
-    const updatedUser = await getUserWithRoleAndPermissions(user.id);
-    const userData = formatUserResponse(updatedUser);
+    const updatedUser = await User.findByPk(user.id, {
+      attributes: { exclude: ['password'] },
+      include: [
+        {
+          model: Role,
+          as: 'role',
+          attributes: ['id', 'nom']
+        },
+        {
+          model: Section,
+          as: 'section',
+          attributes: ['id', 'nom', 'type']
+        }
+      ]
+    });
 
-    sendSuccess(res, userData, 'Profile updated successfully');
+    sendSuccess(res, updatedUser, 'Profile updated successfully');
 
   } catch (error) {
     console.error('Update profile error:', error);
@@ -226,23 +300,10 @@ const refreshToken = async (req, res) => {
     // Verify the token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
-    // Get user with current role and permissions
-    const user = await getUserWithRoleAndPermissions(decoded.id);
-    
-    if (!user) {
-      return sendError(res, 'User not found', 404);
-    }
-    
     // Generate new token
     const newToken = generateToken(decoded.id);
-    
-    // Format user data
-    const userData = formatUserResponse(user);
 
-    sendSuccess(res, { 
-      token: newToken,
-      user: userData 
-    }, 'Token refreshed successfully');
+    sendSuccess(res, { token: newToken }, 'Token refreshed successfully');
 
   } catch (error) {
     if (error.name === 'TokenExpiredError') {

@@ -1,4 +1,3 @@
-// ets-reselec-backend/routes/users.js
 const express = require('express');
 const router = express.Router();
 const { verifyToken, checkRole } = require('../middleware/auth');
@@ -9,13 +8,13 @@ const {
   createUser,
   updateUser,
   deleteUser,
-  updateUserRole,
-  resetUserPassword,
-  toggleUserStatus,
-  getUserPermissions
+  changeUserPassword
 } = require('../controllers/userController');
 
-// User validations
+// All routes require authentication
+router.use(verifyToken);
+
+// Validation rules
 const userValidations = {
   create: [
     body('nom')
@@ -36,9 +35,7 @@ const userValidations = {
       .notEmpty()
       .withMessage('Password is required')
       .isLength({ min: 6 })
-      .withMessage('Password must be at least 6 characters')
-      .matches(/^(?=.*[a-zA-Z])(?=.*\d)/)
-      .withMessage('Password must contain at least one letter and one number'),
+      .withMessage('Password must be at least 6 characters'),
     
     body('section')
       .optional()
@@ -46,11 +43,17 @@ const userValidations = {
       .withMessage('Section name cannot exceed 100 characters'),
     
     body('role_id')
+      .notEmpty()
+      .withMessage('Role is required')
+      .isInt({ min: 1 })
+      .withMessage('Role ID must be a positive integer'),
+    
+    body('section_id')
       .optional()
       .isInt({ min: 1 })
-      .withMessage('Role ID must be a positive integer')
+      .withMessage('Section ID must be a positive integer')
   ],
-
+  
   update: [
     param('id')
       .isInt({ min: 1 })
@@ -58,125 +61,79 @@ const userValidations = {
     
     body('nom')
       .optional()
-      .notEmpty()
-      .withMessage('Name cannot be empty')
       .isLength({ min: 2, max: 100 })
       .withMessage('Name must be between 2 and 100 characters'),
     
-    body('section')
+    body('username')
       .optional()
-      .isLength({ max: 100 })
-      .withMessage('Section name cannot exceed 100 characters'),
+      .isLength({ min: 3, max: 100 })
+      .withMessage('Username must be between 3 and 100 characters')
+      .matches(/^[a-zA-Z0-9_]+$/)
+      .withMessage('Username can only contain letters, numbers, and underscores'),
+    
+    body('password')
+      .optional()
+      .isLength({ min: 6 })
+      .withMessage('Password must be at least 6 characters'),
     
     body('role_id')
-      .optional()
-      .isInt({ min: 1 })
-      .withMessage('Role ID must be a positive integer')
-  ],
-
-  updateRole: [
-    param('id')
-      .isInt({ min: 1 })
-      .withMessage('Invalid user ID'),
-    
-    body('role_id')
-      .notEmpty()
-      .withMessage('Role ID is required')
-      .isInt({ min: 1 })
-      .withMessage('Role ID must be a positive integer')
-  ],
-
-  toggleStatus: [
-    param('id')
-      .isInt({ min: 1 })
-      .withMessage('Invalid user ID'),
-    
-    body('enabled')
-      .notEmpty()
-      .withMessage('Enabled status is required')
-      .isBoolean()
-      .withMessage('Enabled must be true or false')
-  ],
-
-  list: [
-    query('page')
-      .optional()
-      .isInt({ min: 1 })
-      .withMessage('Page must be a positive integer'),
-    
-    query('limit')
-      .optional()
-      .isInt({ min: 1, max: 100 })
-      .withMessage('Limit must be between 1 and 100'),
-    
-    query('role_id')
       .optional()
       .isInt({ min: 1 })
       .withMessage('Role ID must be a positive integer'),
     
-    query('enabled')
+    body('section_id')
       .optional()
-      .isIn(['true', 'false'])
-      .withMessage('Enabled must be true or false')
+      .isInt({ min: 1 })
+      .withMessage('Section ID must be a positive integer')
   ]
 };
 
-// All routes require authentication and admin role
-router.use(verifyToken);
-router.use(checkRole('Admin', 'Administrateur'));
-
-// GET /api/users - List all users
+// GET /api/users - List users (Admin only)
 router.get('/', 
-  userValidations.list,
+  checkRole('Administrateur'),
   getAllUsers
 );
 
-// GET /api/users/:id - Get user details
-router.get('/:id', 
+// GET /api/users/:id - Get user details (Admin only)
+router.get('/:id',
+  checkRole('Administrateur'),
   param('id').isInt({ min: 1 }).withMessage('Invalid user ID'),
   getUserById
 );
 
-// POST /api/users - Create new user
+// POST /api/users - Create new user (Admin only)
 router.post('/',
+  checkRole('Administrateur'),
   userValidations.create,
   createUser
 );
 
-// PUT /api/users/:id - Update user
+// PUT /api/users/:id - Update user (Admin only)
 router.put('/:id',
+  checkRole('Administrateur'),
   userValidations.update,
   updateUser
 );
 
-// DELETE /api/users/:id - Delete user
+// DELETE /api/users/:id - Delete user (Admin only)
 router.delete('/:id',
+  checkRole('Administrateur'),
   param('id').isInt({ min: 1 }).withMessage('Invalid user ID'),
   deleteUser
 );
 
-// PUT /api/users/:id/role - Update user role
-router.put('/:id/role',
-  userValidations.updateRole,
-  updateUserRole
-);
-
-// POST /api/users/:id/reset-password - Reset user password
-router.post('/:id/reset-password',
-  param('id').isInt({ min: 1 }).withMessage('Invalid user ID'),
-  resetUserPassword
-);
-
-// PUT /api/users/:id/status - Enable/disable user
-router.put('/:id/status',
-  userValidations.toggleStatus,
-  toggleUserStatus
-);
-
-// GET /api/users/:id/permissions - Get user permissions
-router.get('/:id/permissions',
-  param('id').isInt({ min: 1 }).withMessage('Invalid user ID'),
-  getUserPermissions
+// PUT /api/users/:id/change-password - Change user password (Admin only)
+router.put('/:id/change-password',
+  checkRole('Administrateur'),
+  [
+    param('id').isInt({ min: 1 }).withMessage('Invalid user ID'),
+    body('newPassword')
+      .notEmpty()
+      .withMessage('New password is required')
+      .isLength({ min: 6 })
+      .withMessage('Password must be at least 6 characters')
+  ],
+  changeUserPassword
 );
 
 module.exports = router;

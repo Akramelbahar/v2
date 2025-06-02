@@ -22,21 +22,9 @@ export const userService = {
   delete: (id) => 
     api.delete(`/users/${id}`),
   
-  // Update user role
-  updateRole: (id, roleId) => 
-    api.put(`/users/${id}/role`, { role_id: roleId }),
-  
-  // Reset user password
-  resetPassword: (id) => 
-    api.post(`/users/${id}/reset-password`),
-  
-  // Enable/disable user
-  toggleStatus: (id, enabled) => 
-    api.put(`/users/${id}/status`, { enabled }),
-  
-  // Get user permissions
-  getPermissions: (id) => 
-    api.get(`/users/${id}/permissions`),
+  // Change user password
+  changePassword: (id, newPassword) => 
+    api.put(`/users/${id}/change-password`, { newPassword }),
   
   // Search users
   search: (query, filters = {}) => 
@@ -45,4 +33,4 @@ export const userService = {
     })
 };
 
-export default userService; 
+export default userService;

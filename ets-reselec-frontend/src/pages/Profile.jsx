@@ -1,7 +1,8 @@
+// ets-reselec-frontend/src/pages/Profile.jsx
 import React, { useState } from 'react';
-import { useForm } from 'react-hook-form';
 import { User, Lock, Settings, AlertCircle, CheckCircle, Eye, EyeOff, Save } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useSections } from '../hooks/useSections';
 import { ButtonSpinner } from '../components/LoadingSpinner';
 
 const Profile = () => {
@@ -13,16 +14,8 @@ const Profile = () => {
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   
   const { user, updateProfile, changePassword } = useAuth();
+  const { data: sections, isLoading: sectionsLoading } = useSections();
   
-  // Helper function to safely get role name
-  const getRoleName = (role) => {
-    if (!role) return 'Rôle non défini';
-    if (typeof role === 'string') return role;
-    if (typeof role === 'object' && role.nom) return role.nom;
-    if (typeof role === 'object' && role.name) return role.name;
-    return 'Rôle non défini';
-  };
-
   // Helper function to get user initials
   const getUserInitials = (name) => {
     return name
@@ -33,37 +26,6 @@ const Profile = () => {
       .slice(0, 2) || 'U';
   };
   
-  // Profile form
-  const {
-    register: registerProfile,
-    handleSubmit: handleProfileSubmit,
-    formState: { errors: profileErrors, isSubmitting: isProfileSubmitting },
-    reset: resetProfile
-  } = useForm({
-    defaultValues: {
-      nom: user?.nom || '',
-      username: user?.username || '',
-      section: user?.section || ''
-    }
-  });
-  
-  // Password form
-  const {
-    register: registerPassword,
-    handleSubmit: handlePasswordSubmit,
-    formState: { errors: passwordErrors, isSubmitting: isPasswordSubmitting },
-    reset: resetPassword,
-    watch
-  } = useForm({
-    defaultValues: {
-      currentPassword: '',
-      newPassword: '',
-      confirmPassword: ''
-    }
-  });
-  
-  const newPassword = watch('newPassword');
-  
   // Handle profile update
   const onProfileSubmit = async (data) => {
     setIsUpdating(true);
@@ -73,6 +35,7 @@ const Profile = () => {
       
       if (result.success) {
         // Profile updated successfully
+        // You can add additional success handling here
       }
     } catch (error) {
       console.error('Profile update error:', error);
@@ -99,6 +62,93 @@ const Profile = () => {
     }
   };
   
+  // Profile form
+  const [profileFormData, setProfileFormData] = useState({
+    nom: user?.nom || '',
+    username: user?.username || '',
+    section_id: user?.section?.id || ''
+  });
+  
+  const [profileErrors, setProfileErrors] = useState({});
+  
+  // Password form
+  const [passwordFormData, setPasswordFormData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+  
+  const [passwordErrors, setPasswordErrors] = useState({});
+  
+  // Profile form handlers
+  const handleProfileChange = (field, value) => {
+    setProfileFormData(prev => ({ ...prev, [field]: value }));
+    // Clear error for this field
+    if (profileErrors[field]) {
+      setProfileErrors(prev => ({ ...prev, [field]: null }));
+    }
+  };
+  
+  const handleProfileSubmit = (e) => {
+    e.preventDefault();
+    
+    // Basic validation
+    const errors = {};
+    if (!profileFormData.nom || profileFormData.nom.length < 2) {
+      errors.nom = 'Le nom doit contenir au moins 2 caractères';
+    }
+    
+    if (Object.keys(errors).length > 0) {
+      setProfileErrors(errors);
+      return;
+    }
+    
+    onProfileSubmit(profileFormData);
+  };
+  
+  // Password form handlers
+  const handlePasswordChange = (field, value) => {
+    setPasswordFormData(prev => ({ ...prev, [field]: value }));
+    // Clear error for this field
+    if (passwordErrors[field]) {
+      setPasswordErrors(prev => ({ ...prev, [field]: null }));
+    }
+  };
+  
+  const handlePasswordSubmit = (e) => {
+    e.preventDefault();
+    
+    // Basic validation
+    const errors = {};
+    if (!passwordFormData.currentPassword) {
+      errors.currentPassword = 'Le mot de passe actuel est requis';
+    }
+    if (!passwordFormData.newPassword || passwordFormData.newPassword.length < 6) {
+      errors.newPassword = 'Le mot de passe doit contenir au moins 6 caractères';
+    }
+    if (!passwordFormData.confirmPassword) {
+      errors.confirmPassword = 'La confirmation du mot de passe est requise';
+    } else if (passwordFormData.confirmPassword !== passwordFormData.newPassword) {
+      errors.confirmPassword = 'Les mots de passe ne correspondent pas';
+    }
+    
+    if (Object.keys(errors).length > 0) {
+      setPasswordErrors(errors);
+      return;
+    }
+    
+    onPasswordSubmit(passwordFormData);
+  };
+  
+  const resetPassword = () => {
+    setPasswordFormData({
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: ''
+    });
+    setPasswordErrors({});
+  };
+  
   const ProfileTab = () => (
     <div className="space-y-6">
       {/* Profile Header */}
@@ -110,7 +160,15 @@ const Profile = () => {
           <div>
             <h2 className="text-2xl font-bold">{user?.nom}</h2>
             <p className="text-primary-100">@{user?.username}</p>
-            <p className="text-primary-200">{getRoleName(user?.role)}</p>
+            <p className="text-primary-200">
+              {typeof user?.role === 'object' ? user.role?.nom : user?.role || 'Rôle non défini'}
+            </p>
+            {user?.section && (
+              <p className="text-primary-200">
+                Section: {user.section.nom || user.section}
+                {user.section.isResponsible && ' (Responsable)'}
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -125,7 +183,7 @@ const Profile = () => {
           <p className="text-gray-600 mt-1">Gérez vos informations de profil</p>
         </div>
         
-        <form onSubmit={handleProfileSubmit(onProfileSubmit)} className="p-6 space-y-6">
+        <form onSubmit={handleProfileSubmit} className="p-6 space-y-6">
           {/* Full Name */}
           <div>
             <label htmlFor="nom" className="block text-sm font-medium text-gray-700 mb-2">
@@ -139,18 +197,13 @@ const Profile = () => {
                 focus:ring-2 focus:ring-primary-500 focus:border-primary-500
                 ${profileErrors.nom ? 'border-error-300' : 'border-gray-300'}
               `}
-              {...registerProfile('nom', {
-                required: 'Le nom est requis',
-                minLength: {
-                  value: 2,
-                  message: 'Le nom doit contenir au moins 2 caractères'
-                }
-              })}
+              value={profileFormData.nom}
+              onChange={(e) => handleProfileChange('nom', e.target.value)}
             />
             {profileErrors.nom && (
               <p className="mt-2 text-sm text-error-600 flex items-center space-x-1">
                 <AlertCircle className="w-4 h-4" />
-                <span>{profileErrors.nom.message}</span>
+                <span>{profileErrors.nom}</span>
               </p>
             )}
           </div>
@@ -172,26 +225,33 @@ const Profile = () => {
             </p>
           </div>
           
-          {/* Section */}
+          {/* Section Selection */}
           <div>
-            <label htmlFor="section" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="section_id" className="block text-sm font-medium text-gray-700 mb-2">
               Section / Département
             </label>
-            <input
-              id="section"
-              type="text"
+            <select
+              id="section_id"
               className={`
                 form-input block w-full px-3 py-2 border rounded-lg
                 focus:ring-2 focus:ring-primary-500 focus:border-primary-500
-                ${profileErrors.section ? 'border-error-300' : 'border-gray-300'}
+                ${profileErrors.section_id ? 'border-error-300' : 'border-gray-300'}
               `}
-              placeholder="Ex: Maintenance, Technique, Administration"
-              {...registerProfile('section')}
-            />
-            {profileErrors.section && (
-              <p className="mt-2 text-sm text-error-600 flex items-center space-x-1">
-                <AlertCircle className="w-4 h-4" />
-                <span>{profileErrors.section.message}</span>
+              value={profileFormData.section_id}
+              onChange={(e) => handleProfileChange('section_id', e.target.value)}
+              disabled={sectionsLoading}
+            >
+              <option value="">-- Aucune section --</option>
+              {sections?.map(section => (
+                <option key={section.id} value={section.id}>
+                  {section.nom} ({section.type})
+                  {section.responsable?.id === user?.id && ' - Vous êtes responsable'}
+                </option>
+              ))}
+            </select>
+            {user?.section?.isResponsible && (
+              <p className="mt-1 text-sm text-blue-600">
+                Vous êtes le responsable de cette section
               </p>
             )}
           </div>
@@ -205,50 +265,27 @@ const Profile = () => {
               type="text"
               disabled
               className="form-input block w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-500"
-              value={getRoleName(user?.role)}
+              value={typeof user?.role === 'object' ? user.role?.nom : user?.role || ''}
             />
             <p className="mt-1 text-sm text-gray-500">
               Le rôle est géré par les administrateurs
             </p>
           </div>
           
-          {/* Permissions (Read-only) */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Permissions
-            </label>
-            <div className="bg-gray-50 border border-gray-300 rounded-lg p-3">
-              {user?.permissions?.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {user.permissions.map((permission, index) => (
-                    <span
-                      key={index}
-                      className="bg-primary-100 text-primary-800 px-2 py-1 rounded-full text-xs font-medium"
-                    >
-                      {permission}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500">Aucune permission spécifique</p>
-              )}
-            </div>
-          </div>
-          
           {/* Submit Button */}
           <div className="flex justify-end">
             <button
               type="submit"
-              disabled={isProfileSubmitting || isUpdating}
+              disabled={isUpdating}
               className={`
                 flex items-center space-x-2 px-6 py-2 border border-transparent rounded-lg text-sm font-medium text-white
-                ${isProfileSubmitting || isUpdating
+                ${isUpdating
                   ? 'bg-gray-400 cursor-not-allowed'
                   : 'bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500'
                 }
               `}
             >
-              {isProfileSubmitting || isUpdating ? (
+              {isUpdating ? (
                 <>
                   <ButtonSpinner />
                   <span>Mise à jour...</span>
@@ -278,7 +315,7 @@ const Profile = () => {
           <p className="text-gray-600 mt-1">Mettez à jour votre mot de passe pour sécuriser votre compte</p>
         </div>
         
-        <form onSubmit={handlePasswordSubmit(onPasswordSubmit)} className="p-6 space-y-6">
+        <form onSubmit={handlePasswordSubmit} className="p-6 space-y-6">
           {/* Current Password */}
           <div>
             <label htmlFor="currentPassword" className="block text-sm font-medium text-gray-700 mb-2">
@@ -294,9 +331,8 @@ const Profile = () => {
                   ${passwordErrors.currentPassword ? 'border-error-300' : 'border-gray-300'}
                 `}
                 placeholder="Entrez votre mot de passe actuel"
-                {...registerPassword('currentPassword', {
-                  required: 'Le mot de passe actuel est requis'
-                })}
+                value={passwordFormData.currentPassword}
+                onChange={(e) => handlePasswordChange('currentPassword', e.target.value)}
               />
               <button
                 type="button"
@@ -313,7 +349,7 @@ const Profile = () => {
             {passwordErrors.currentPassword && (
               <p className="mt-2 text-sm text-error-600 flex items-center space-x-1">
                 <AlertCircle className="w-4 h-4" />
-                <span>{passwordErrors.currentPassword.message}</span>
+                <span>{passwordErrors.currentPassword}</span>
               </p>
             )}
           </div>
@@ -333,17 +369,8 @@ const Profile = () => {
                   ${passwordErrors.newPassword ? 'border-error-300' : 'border-gray-300'}
                 `}
                 placeholder="Entrez un nouveau mot de passe"
-                {...registerPassword('newPassword', {
-                  required: 'Le nouveau mot de passe est requis',
-                  minLength: {
-                    value: 6,
-                    message: 'Le mot de passe doit contenir au moins 6 caractères'
-                  },
-                  pattern: {
-                    value: /^(?=.*[a-zA-Z])(?=.*\d)/,
-                    message: 'Le mot de passe doit contenir au moins une lettre et un chiffre'
-                  }
-                })}
+                value={passwordFormData.newPassword}
+                onChange={(e) => handlePasswordChange('newPassword', e.target.value)}
               />
               <button
                 type="button"
@@ -360,7 +387,7 @@ const Profile = () => {
             {passwordErrors.newPassword && (
               <p className="mt-2 text-sm text-error-600 flex items-center space-x-1">
                 <AlertCircle className="w-4 h-4" />
-                <span>{passwordErrors.newPassword.message}</span>
+                <span>{passwordErrors.newPassword}</span>
               </p>
             )}
           </div>
@@ -380,11 +407,8 @@ const Profile = () => {
                   ${passwordErrors.confirmPassword ? 'border-error-300' : 'border-gray-300'}
                 `}
                 placeholder="Confirmez le nouveau mot de passe"
-                {...registerPassword('confirmPassword', {
-                  required: 'La confirmation du mot de passe est requise',
-                  validate: value =>
-                    value === newPassword || 'Les mots de passe ne correspondent pas'
-                })}
+                value={passwordFormData.confirmPassword}
+                onChange={(e) => handlePasswordChange('confirmPassword', e.target.value)}
               />
               <button
                 type="button"
@@ -401,7 +425,7 @@ const Profile = () => {
             {passwordErrors.confirmPassword && (
               <p className="mt-2 text-sm text-error-600 flex items-center space-x-1">
                 <AlertCircle className="w-4 h-4" />
-                <span>{passwordErrors.confirmPassword.message}</span>
+                <span>{passwordErrors.confirmPassword}</span>
               </p>
             )}
           </div>
@@ -431,16 +455,16 @@ const Profile = () => {
           <div className="flex justify-end">
             <button
               type="submit"
-              disabled={isPasswordSubmitting || isChangingPassword}
+              disabled={isChangingPassword}
               className={`
                 flex items-center space-x-2 px-6 py-2 border border-transparent rounded-lg text-sm font-medium text-white
-                ${isPasswordSubmitting || isChangingPassword
+                ${isChangingPassword
                   ? 'bg-gray-400 cursor-not-allowed'
                   : 'bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500'
                 }
               `}
             >
-              {isPasswordSubmitting || isChangingPassword ? (
+              {isChangingPassword ? (
                 <>
                   <ButtonSpinner />
                   <span>Changement...</span>

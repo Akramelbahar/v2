@@ -12,8 +12,10 @@ const clientRoutes = require('./routes/clients');
 const equipmentRoutes = require('./routes/equipment');
 const interventionRoutes = require('./routes/interventions');
 const dashboardRoutes = require('./routes/dashboard');
-const roleRoutes = require('./routes/roles');
+const sectionRoutes = require('./routes/sections');
 const userRoutes = require('./routes/users');
+const roleRoutes = require('./routes/roles');
+const permissionRoutes = require('./routes/permissions');
 
 const app = express();
 
@@ -48,8 +50,10 @@ app.use('/api/clients', clientRoutes);
 app.use('/api/equipment', equipmentRoutes);
 app.use('/api/interventions', interventionRoutes);
 app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/roles', roleRoutes);
+app.use('/api/sections', sectionRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/roles', roleRoutes);
+app.use('/api/permissions', permissionRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -75,6 +79,39 @@ app.get('/api/docs', (req, res) => {
         'PUT /api/auth/profile': 'Update user profile',
         'POST /api/auth/refresh-token': 'Refresh JWT token',
         'POST /api/auth/logout': 'User logout'
+      },
+      sections: {
+        'GET /api/sections': 'List all sections',
+        'GET /api/sections/:id': 'Get section details',
+        'GET /api/sections/types': 'Get section types',
+        'POST /api/sections': 'Create new section (Admin only)',
+        'PUT /api/sections/:id': 'Update section (Admin only)',
+        'DELETE /api/sections/:id': 'Delete section (Admin only)'
+      },
+      users: {
+        'GET /api/users': 'List users (Admin only)',
+        'GET /api/users/:id': 'Get user details (Admin only)',
+        'POST /api/users': 'Create new user (Admin only)',
+        'PUT /api/users/:id': 'Update user (Admin only)',
+        'DELETE /api/users/:id': 'Delete user (Admin only)',
+        'PUT /api/users/:id/change-password': 'Change user password (Admin only)'
+      },
+      roles: {
+        'GET /api/roles': 'List roles',
+        'GET /api/roles/:id': 'Get role details',
+        'POST /api/roles': 'Create new role (Admin only)',
+        'PUT /api/roles/:id': 'Update role (Admin only)',
+        'DELETE /api/roles/:id': 'Delete role (Admin only)',
+        'GET /api/roles/:id/permissions': 'Get role permissions',
+        'PUT /api/roles/:id/permissions': 'Update role permissions (Admin only)'
+      },
+      permissions: {
+        'GET /api/permissions': 'List permissions (Admin only)',
+        'GET /api/permissions/modules': 'Get permission modules (Admin only)',
+        'GET /api/permissions/:id': 'Get permission details (Admin only)',
+        'POST /api/permissions': 'Create new permission (Admin only)',
+        'PUT /api/permissions/:id': 'Update permission (Admin only)',
+        'DELETE /api/permissions/:id': 'Delete permission (Admin only)'
       },
       clients: {
         'GET /api/clients': 'List clients with pagination and search',
@@ -109,38 +146,11 @@ app.get('/api/docs', (req, res) => {
         'GET /api/dashboard/alerts': 'Get alerts and notifications',
         'GET /api/dashboard/charts': 'Get chart data',
         'GET /api/dashboard/performance': 'Get performance metrics'
-      },
-      roles: {
-        'GET /api/roles': 'List roles with pagination',
-        'GET /api/roles/:id': 'Get role details',
-        'POST /api/roles': 'Create new role',
-        'PUT /api/roles/:id': 'Update role',
-        'DELETE /api/roles/:id': 'Delete role',
-        'GET /api/roles/permissions/all': 'Get all permissions',
-        'POST /api/roles/permissions': 'Create new permission',
-        'PUT /api/roles/permissions/:id': 'Update permission',
-        'DELETE /api/roles/permissions/:id': 'Delete permission',
-        'POST /api/roles/:id/permissions': 'Assign permissions to role'
-      },
-      users: {
-        'GET /api/users': 'List users with pagination and search',
-        'GET /api/users/stats': 'Get user statistics',
-        'GET /api/users/roles': 'Get all roles for dropdowns',
-        'GET /api/users/:id': 'Get user details',
-        'POST /api/users': 'Create new user',
-        'PUT /api/users/:id': 'Update user information',
-        'PUT /api/users/:id/role': 'Update user role',
-        'PUT /api/users/:id/password': 'Update user password',
-        'DELETE /api/users/:id': 'Delete user'
       }
     }
   });
 });
-// Import routes (add this line)
-const sectionRoutes = require('./routes/sections');
 
-// API routes (add this line)
-app.use('/api/sections', sectionRoutes);
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({

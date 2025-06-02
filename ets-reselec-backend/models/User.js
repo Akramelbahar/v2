@@ -1,3 +1,4 @@
+// ets-reselec-backend/models/User.js
 const { DataTypes } = require('sequelize');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -18,10 +19,7 @@ const User = sequelize.define('User', {
       }
     }
   },
-  section: {
-    type: DataTypes.STRING(100),
-    allowNull: true
-  },
+  // REMOVED: section field (now using section_id foreign key)
   username: {
     type: DataTypes.STRING(100),
     allowNull: false,
@@ -61,7 +59,7 @@ const User = sequelize.define('User', {
   },
   section_id: {
     type: DataTypes.INTEGER,
-    allowNull: true,
+    allowNull: true, // Can be made NOT NULL based on business requirements
     references: {
       model: 'Section',
       key: 'id'
@@ -108,7 +106,8 @@ User.prototype.generateToken = function() {
     { 
       id: this.id,
       username: this.username,
-      role_id: this.role_id
+      role_id: this.role_id,
+      section_id: this.section_id
     },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRE || '7d' }
@@ -124,6 +123,22 @@ User.prototype.toJSON = function() {
 // Virtual field for full display name
 User.prototype.getDisplayName = function() {
   return `${this.nom} (${this.username})`;
+};
+
+// Get user's section name
+User.prototype.getSectionName = async function() {
+  if (!this.section_id) return null;
+  
+  const section = await sequelize.models.Section.findByPk(this.section_id);
+  return section ? section.nom : null;
+};
+
+// Check if user is section responsible
+User.prototype.isSectionResponsible = async function() {
+  if (!this.section_id) return false;
+  
+  const section = await sequelize.models.Section.findByPk(this.section_id);
+  return section && section.responsable_id === this.id;
 };
 
 module.exports = User;

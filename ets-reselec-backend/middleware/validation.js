@@ -1,3 +1,4 @@
+// ets-reselec-backend/middleware/validation.js (updated portions)
 const { body, param, query } = require('express-validator');
 
 // Authentication validations
@@ -25,10 +26,11 @@ const authValidations = {
       .matches(/^(?=.*[a-zA-Z])(?=.*\d)/)
       .withMessage('Password must contain at least one letter and one number'),
     
-    body('section')
+    // Changed from 'section' to 'section_id'
+    body('section_id')
       .optional()
-      .isLength({ max: 100 })
-      .withMessage('Section name cannot exceed 100 characters'),
+      .isInt({ min: 1 })
+      .withMessage('Section ID must be a positive integer'),
     
     body('role_id')
       .optional()
@@ -52,10 +54,11 @@ const authValidations = {
       .isLength({ min: 2, max: 100 })
       .withMessage('Name must be between 2 and 100 characters'),
     
-    body('section')
+    // Changed from 'section' to 'section_id'
+    body('section_id')
       .optional()
-      .isLength({ max: 100 })
-      .withMessage('Section name cannot exceed 100 characters'),
+      .isInt({ min: 1 })
+      .withMessage('Section ID must be a positive integer'),
     
     body('currentPassword')
       .optional()
@@ -71,6 +74,7 @@ const authValidations = {
   ]
 };
 
+// ... rest of the validation remains the same ...
 // Client validations
 const clientValidations = {
   create: [

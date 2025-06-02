@@ -1,82 +1,111 @@
 const express = require('express');
 const router = express.Router();
 const { verifyToken, checkRole } = require('../middleware/auth');
-const { roleValidations, permissionValidations, queryValidations, idValidation } = require('../middleware/validation');
+const { body, param } = require('express-validator');
 const {
   getAllRoles,
   getRoleById,
   createRole,
   updateRole,
   deleteRole,
-  getAllPermissions,
-  createPermission,
-  updatePermission,
-  deletePermission,
-  assignPermissionsToRole
+  getRolePermissions,
+  updateRolePermissions
 } = require('../controllers/roleController');
 
-// All routes require authentication and admin role
+// All routes require authentication
 router.use(verifyToken);
-router.use(checkRole('Administrateur', 'Admin'));
 
-// Permission routes (placed before parameterized routes)
-// GET /api/roles/permissions/all - Get all permissions
-router.get('/permissions/all', getAllPermissions);
+// Validation rules
+const roleValidations = {
+  create: [
+    body('nom')
+      .notEmpty()
+      .withMessage('Role name is required')
+      .isLength({ min: 2, max: 100 })
+      .withMessage('Role name must be between 2 and 100 characters'),
+    
+    body('permissions')
+      .optional()
+      .isArray()
+      .withMessage('Permissions must be an array'),
+    
+    body('permissions.*')
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage('Permission IDs must be positive integers')
+  ],
+  
+  update: [
+    param('id')
+      .isInt({ min: 1 })
+      .withMessage('Invalid role ID'),
+    
+    body('nom')
+      .optional()
+      .isLength({ min: 2, max: 100 })
+      .withMessage('Role name must be between 2 and 100 characters'),
+    
+    body('permissions')
+      .optional()
+      .isArray()
+      .withMessage('Permissions must be an array'),
+    
+    body('permissions.*')
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage('Permission IDs must be positive integers')
+  ]
+};
 
-// POST /api/roles/permissions - Create new permission
-router.post('/permissions',
-  permissionValidations.create,
-  createPermission
-);
-
-// PUT /api/roles/permissions/:id - Update permission
-router.put('/permissions/:id',
-  permissionValidations.update,
-  updatePermission
-);
-
-// DELETE /api/roles/permissions/:id - Delete permission
-router.delete('/permissions/:id',
-  idValidation,
-  deletePermission
-);
-
-// Role routes
-// GET /api/roles - List roles with pagination
-router.get('/', 
-  queryValidations.pagination,
-  getAllRoles
-);
+// GET /api/roles - List roles
+router.get('/', getAllRoles);
 
 // GET /api/roles/:id - Get role details
-router.get('/:id', 
-  idValidation,
+router.get('/:id',
+  param('id').isInt({ min: 1 }).withMessage('Invalid role ID'),
   getRoleById
 );
 
-// POST /api/roles - Create new role
+// POST /api/roles - Create new role (Admin only)
 router.post('/',
+  checkRole('Administrateur'),
   roleValidations.create,
   createRole
 );
 
-// PUT /api/roles/:id - Update role
+// PUT /api/roles/:id - Update role (Admin only)
 router.put('/:id',
+  checkRole('Administrateur'),
   roleValidations.update,
   updateRole
 );
 
-// DELETE /api/roles/:id - Delete role
+// DELETE /api/roles/:id - Delete role (Admin only)
 router.delete('/:id',
-  idValidation,
+  checkRole('Administrateur'),
+  param('id').isInt({ min: 1 }).withMessage('Invalid role ID'),
   deleteRole
 );
 
-// POST /api/roles/:id/permissions - Assign permissions to role
-router.post('/:id/permissions',
-  idValidation,
-  roleValidations.assignPermissions,
-  assignPermissionsToRole
+// GET /api/roles/:id/permissions - Get role permissions
+router.get('/:id/permissions',
+  param('id').isInt({ min: 1 }).withMessage('Invalid role ID'),
+  getRolePermissions
+);
+
+// PUT /api/roles/:id/permissions - Update role permissions (Admin only)
+router.put('/:id/permissions',
+  checkRole('Administrateur'),
+  [
+    param('id').isInt({ min: 1 }).withMessage('Invalid role ID'),
+    body('permissions')
+      .isArray()
+      .withMessage('Permissions must be an array'),
+    body('permissions.*')
+      .isInt({ min: 1 })
+      .withMessage('Permission IDs must be positive integers')
+  ],
+  updateRolePermissions
 );
 
 module.exports = router;

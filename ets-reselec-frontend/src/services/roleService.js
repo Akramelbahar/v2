@@ -1,4 +1,4 @@
-// ets-reselec-frontend/src/services/roleService.js
+// src/services/roleService.js
 import api from './api';
 
 export const roleService = {
@@ -22,25 +22,13 @@ export const roleService = {
   delete: (id) => 
     api.delete(`/roles/${id}`),
   
-  // Assign permissions to role
-  assignPermissions: (id, permissions) => 
-    api.post(`/roles/${id}/permissions`, { permissions }),
+  // Get role permissions
+  getPermissions: (id) => 
+    api.get(`/roles/${id}/permissions`),
   
-  // Get all permissions
-  getAllPermissions: () => 
-    api.get('/roles/permissions/all'),
-  
-  // Create new permission
-  createPermission: (data) => 
-    api.post('/roles/permissions', data),
-  
-  // Update permission
-  updatePermission: (id, data) => 
-    api.put(`/roles/permissions/${id}`, data),
-  
-  // Delete permission
-  deletePermission: (id) => 
-    api.delete(`/roles/permissions/${id}`)
+  // Update role permissions
+  updatePermissions: (id, permissions) => 
+    api.put(`/roles/${id}/permissions`, { permissions })
 };
 
 export default roleService;

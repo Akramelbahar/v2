@@ -1,178 +1,340 @@
-// ets-reselec-backend/seeds/index.js
-const { Role, Permission, User, sequelize } = require('../models');
+// ets-reselec-backend/seeds/index.js (updated portions)
+const bcrypt = require('bcryptjs');
+const { 
+  User, 
+  Role, 
+  Permission, 
+  Section,
+  Client,
+  Equipment,
+  Intervention,
+  sequelize 
+} = require('../models');
 
 const seedDatabase = async () => {
   const transaction = await sequelize.transaction();
   
   try {
-    console.log('🌱 Seeding database...');
+    console.log('🌱 Starting database seeding...');
 
-    // Default permissions
-    const permissions = [
-      // Dashboard permissions
-      { module: 'dashboard', action: 'read', description: 'View dashboard statistics' },
+    // Check if data already exists
+    const existingUsers = await User.count();
+    if (existingUsers > 0) {
+      console.log('ℹ️  Database already contains data. Skipping seed.');
+      return;
+    }
+
+    // Create Roles
+    const roles = await Role.bulkCreate([
+      { nom: 'Administrateur' },
+      { nom: 'Chef de Section' },
+      { nom: 'Technicien Senior' },
+      { nom: 'Technicien Junior' },
+      { nom: 'Observateur' }
+    ], { transaction });
+
+    console.log('✅ Roles created');
+
+    // Create Permissions (same as before)
+    const permissions = await Permission.bulkCreate([
+      // User permissions
+      { module: 'utilisateurs', action: 'create', description: 'Créer des utilisateurs' },
+      { module: 'utilisateurs', action: 'read', description: 'Voir les utilisateurs' },
+      { module: 'utilisateurs', action: 'update', description: 'Modifier les utilisateurs' },
+      { module: 'utilisateurs', action: 'delete', description: 'Supprimer des utilisateurs' },
+      
+      // Section permissions
+      { module: 'sections', action: 'create', description: 'Créer des sections' },
+      { module: 'sections', action: 'read', description: 'Voir les sections' },
+      { module: 'sections', action: 'update', description: 'Modifier les sections' },
+      { module: 'sections', action: 'delete', description: 'Supprimer des sections' },
+      { module: 'sections', action: 'manage', description: 'Gérer sa propre section' },
       
       // Client permissions
-      { module: 'clients', action: 'create', description: 'Create new clients' },
-      { module: 'clients', action: 'read', description: 'View clients' },
-      { module: 'clients', action: 'update', description: 'Update client information' },
-      { module: 'clients', action: 'delete', description: 'Delete clients' },
+      { module: 'clients', action: 'create', description: 'Créer des clients' },
+      { module: 'clients', action: 'read', description: 'Voir les clients' },
+      { module: 'clients', action: 'update', description: 'Modifier les clients' },
+      { module: 'clients', action: 'delete', description: 'Supprimer des clients' },
       
       // Equipment permissions
-      { module: 'equipment', action: 'create', description: 'Add new equipment' },
-      { module: 'equipment', action: 'read', description: 'View equipment' },
-      { module: 'equipment', action: 'update', description: 'Update equipment information' },
-      { module: 'equipment', action: 'delete', description: 'Delete equipment' },
+      { module: 'equipements', action: 'create', description: 'Créer des équipements' },
+      { module: 'equipements', action: 'read', description: 'Voir les équipements' },
+      { module: 'equipements', action: 'update', description: 'Modifier les équipements' },
+      { module: 'equipements', action: 'delete', description: 'Supprimer des équipements' },
       
       // Intervention permissions
-      { module: 'interventions', action: 'create', description: 'Create new interventions' },
-      { module: 'interventions', action: 'read', description: 'View interventions' },
-      { module: 'interventions', action: 'update', description: 'Update intervention status and details' },
-      { module: 'interventions', action: 'delete', description: 'Delete interventions' },
-      { module: 'interventions', action: 'manage_workflow', description: 'Manage intervention workflow phases' },
+      { module: 'interventions', action: 'create', description: 'Créer des interventions' },
+      { module: 'interventions', action: 'read', description: 'Voir les interventions' },
+      { module: 'interventions', action: 'update', description: 'Modifier les interventions' },
+      { module: 'interventions', action: 'delete', description: 'Supprimer des interventions' },
+      { module: 'interventions', action: 'validate', description: 'Valider les interventions' },
       
       // Report permissions
-      { module: 'reports', action: 'read', description: 'View reports' },
-      { module: 'reports', action: 'create', description: 'Generate reports' },
-      { module: 'reports', action: 'export', description: 'Export reports' },
-      
-      // Analytics permissions
-      { module: 'analytics', action: 'read', description: 'View analytics and charts' },
-      
-      // User management permissions
-      { module: 'users', action: 'create', description: 'Create new users' },
-      { module: 'users', action: 'read', description: 'View users' },
-      { module: 'users', action: 'update', description: 'Update user information' },
-      { module: 'users', action: 'delete', description: 'Delete users' },
-      
-      // Role management permissions
-      { module: 'roles', action: 'create', description: 'Create new roles' },
-      { module: 'roles', action: 'read', description: 'View roles' },
-      { module: 'roles', action: 'update', description: 'Update roles' },
-      { module: 'roles', action: 'delete', description: 'Delete roles' },
-      { module: 'roles', action: 'assign_permissions', description: 'Assign permissions to roles' },
-      
-      // System administration
-      { module: 'system', action: 'admin', description: 'Full system administration access' },
-      { module: 'system', action: 'settings', description: 'Manage system settings' }
-    ];
+      { module: 'rapports', action: 'create', description: 'Créer des rapports' },
+      { module: 'rapports', action: 'read', description: 'Voir les rapports' },
+      { module: 'rapports', action: 'validate', description: 'Valider les rapports' }
+    ], { transaction });
 
-    // Create permissions
-    const createdPermissions = [];
-    for (const permission of permissions) {
-      const [perm, created] = await Permission.findOrCreate({
-        where: { module: permission.module, action: permission.action },
-        defaults: permission,
-        transaction
-      });
-      createdPermissions.push(perm);
-      if (created) {
-        console.log(`✓ Created permission: ${permission.module}:${permission.action}`);
+    console.log('✅ Permissions created');
+
+    // Assign all permissions to Administrator role
+    const adminRole = roles.find(r => r.nom === 'Administrateur');
+    await adminRole.setPermissions(permissions, { transaction });
+
+    // Create Sections first (without responsable)
+    const sections = await Section.bulkCreate([
+      { nom: 'Maintenance Préventive', type: 'Opérationnelle' },
+      { nom: 'Maintenance Corrective', type: 'Opérationnelle' },
+      { nom: 'Rénovation', type: 'Opérationnelle' },
+      { nom: 'Contrôle Qualité', type: 'Support' },
+      { nom: 'Administration', type: 'Support' }
+    ], { transaction });
+
+    console.log('✅ Sections created');
+
+    // Create Admin User first
+    const adminUser = await User.create({
+      nom: 'Administrateur Système',
+      username: 'admin',
+      password: 'admin123', // Will be hashed by the hook
+      role_id: adminRole.id,
+      section_id: sections.find(s => s.nom === 'Administration').id
+    }, { transaction });
+
+    console.log('✅ Admin user created (username: admin, password: admin123)');
+
+    // Create sample users with section_id
+    const sampleUsers = await User.bulkCreate([
+      {
+        nom: 'Jean Dupont',
+        username: 'jdupont',
+        password: await bcrypt.hash('password123', 10),
+        role_id: roles.find(r => r.nom === 'Chef de Section').id,
+        section_id: sections.find(s => s.nom === 'Maintenance Préventive').id
+      },
+      {
+        nom: 'Marie Martin',
+        username: 'mmartin',
+        password: await bcrypt.hash('password123', 10),
+        role_id: roles.find(r => r.nom === 'Technicien Senior').id,
+        section_id: sections.find(s => s.nom === 'Maintenance Corrective').id
+      },
+      {
+        nom: 'Pierre Bernard',
+        username: 'pbernard',
+        password: await bcrypt.hash('password123', 10),
+        role_id: roles.find(r => r.nom === 'Technicien Junior').id,
+        section_id: sections.find(s => s.nom === 'Rénovation').id
       }
-    }
+    ], { transaction });
 
-    // Default roles
-    const roles = [
-      {
-        nom: 'Administrateur',
-        description: 'Full system access with all permissions',
-        permissions: createdPermissions.map(p => p.id) // All permissions
-      },
-      {
-        nom: 'Technicien Senior',
-        description: 'Senior technician with most operational permissions',
-        permissions: createdPermissions
-          .filter(p => !['users', 'roles', 'system'].includes(p.module))
-          .map(p => p.id)
-      },
-      {
-        nom: 'Technicien',
-        description: 'Standard technician with basic operational permissions',
-        permissions: createdPermissions
-          .filter(p => 
-            ['dashboard', 'clients', 'equipment', 'interventions'].includes(p.module) &&
-            ['create', 'read', 'update'].includes(p.action)
-          )
-          .map(p => p.id)
-      },
-      {
-        nom: 'Consultant',
-        description: 'Read-only access for consultants and external users',
-        permissions: createdPermissions
-          .filter(p => p.action === 'read')
-          .map(p => p.id)
-      },
-      {
-        nom: 'Utilisateur Basic',
-        description: 'Basic user with minimal permissions',
-        permissions: createdPermissions
-          .filter(p => 
-            p.module === 'dashboard' && p.action === 'read'
-          )
-          .map(p => p.id)
-      }
-    ];
+    console.log('✅ Sample users created');
 
-    // Create roles and assign permissions
-    for (const roleData of roles) {
-      const [role, created] = await Role.findOrCreate({
-        where: { nom: roleData.nom },
-        defaults: { nom: roleData.nom },
-        transaction
-      });
-
-      if (created) {
-        console.log(`✓ Created role: ${roleData.nom}`);
-      }
-
-      // Assign permissions to role
-      await role.setPermissions(roleData.permissions, { transaction });
-      console.log(`✓ Assigned ${roleData.permissions.length} permissions to ${roleData.nom}`);
-    }
-
-    // Create default admin user if it doesn't exist
-    const adminRole = await Role.findOne({
-      where: { nom: 'Administrateur' },
-      transaction
-    });
-
-    const [adminUser, userCreated] = await User.findOrCreate({
-      where: { username: 'admin' },
-      defaults: {
-        nom: 'Administrateur Système',
-        username: 'admin',
-        password: 'admin123', // This will be hashed by the model hook
-        section: 'Administration',
-        role_id: adminRole.id
-      },
-      transaction
-    });
-
-    if (userCreated) {
-      console.log('✓ Created default admin user (username: admin, password: admin123)');
-      console.log('⚠️  Please change the default admin password after first login!');
-    }
-
-    await transaction.commit();
-    console.log('✅ Database seeding completed successfully!');
+    // Now update sections with responsables
+    await Section.update(
+      { responsable_id: sampleUsers[0].id },
+      { where: { nom: 'Maintenance Préventive' }, transaction }
+    );
     
-    return {
-      success: true,
-      message: 'Database seeded successfully',
-      data: {
-        permissions: createdPermissions.length,
-        roles: roles.length,
-        adminUser: userCreated
+    await Section.update(
+      { responsable_id: sampleUsers[1].id },
+      { where: { nom: 'Maintenance Corrective' }, transaction }
+    );
+    
+    await Section.update(
+      { responsable_id: adminUser.id },
+      { where: { nom: 'Administration' }, transaction }
+    );
+
+    console.log('✅ Section responsables assigned');
+
+    // Assign permissions to Chef de Section role
+    const chefSectionRole = roles.find(r => r.nom === 'Chef de Section');
+    const chefSectionPermissions = permissions.filter(p => 
+      ['sections:manage', 'clients:read', 'equipements:read', 'interventions:create', 
+       'interventions:read', 'interventions:update', 'rapports:create', 'rapports:read']
+      .includes(`${p.module}:${p.action}`)
+    );
+    await chefSectionRole.setPermissions(chefSectionPermissions, { transaction });
+
+    // Rest of the seed file remains the same...
+    // Create sample clients
+    const sampleClients = await Client.bulkCreate([
+      {
+        nom_entreprise: 'Industries Maroc SA',
+        secteur_activite: 'Industrie Manufacturière',
+        adresse: '123 Zone Industrielle',
+        ville: 'Casablanca',
+        codePostal: '20000',
+        tel: '+212 522 123456',
+        email: 'contact@industries-maroc.ma',
+        contact_principal: 'Ahmed Benali',
+        poste_contact: 'Directeur Technique',
+        telephone_contact: '+212 661 234567',
+        email_contact: 'a.benali@industries-maroc.ma',
+        forme_juridique: 'SA',
+        cree_par_id: adminUser.id
+      },
+      {
+        nom_entreprise: 'Textile Nord SARL',
+        secteur_activite: 'Textile',
+        adresse: '45 Rue des Fabricants',
+        ville: 'Tanger',
+        codePostal: '90000',
+        tel: '+212 539 987654',
+        email: 'info@textile-nord.ma',
+        contact_principal: 'Fatima Alami',
+        poste_contact: 'Responsable Maintenance',
+        telephone_contact: '+212 662 345678',
+        email_contact: 'f.alami@textile-nord.ma',
+        forme_juridique: 'SARL',
+        cree_par_id: adminUser.id
+      },
+      {
+        nom_entreprise: 'Agro-Alimentaire Sud',
+        secteur_activite: 'Agro-alimentaire',
+        adresse: '78 Avenue Mohammed V',
+        ville: 'Agadir',
+        codePostal: '80000',
+        tel: '+212 528 876543',
+        email: 'contact@agrosud.ma',
+        contact_principal: 'Rachid Tahiri',
+        poste_contact: 'Ingénieur Production',
+        telephone_contact: '+212 663 456789',
+        email_contact: 'r.tahiri@agrosud.ma',
+        forme_juridique: 'SA',
+        cree_par_id: adminUser.id
       }
-    };
+    ], { transaction });
+
+    console.log('✅ Sample clients created');
+
+    // Create sample equipment
+    const sampleEquipment = await Equipment.bulkCreate([
+      {
+        nom: 'Moteur Principal Ligne 1',
+        marque: 'Siemens',
+        modele: '1LA7-315',
+        type_equipement: 'MOTEUR_ELECTRIQUE',
+        etatDeReception: 'Bon état général',
+        valeur: '75000 MAD',
+        cout: 75000,
+        proprietaire_id: sampleClients[0].id,
+        ajouterPar_id: adminUser.id
+      },
+      {
+        nom: 'Transformateur 630 KVA',
+        marque: 'Schneider Electric',
+        modele: 'Trihal 630',
+        type_equipement: 'TRANSFORMATEUR',
+        etatDeReception: 'À réviser',
+        valeur: '250000 MAD',
+        cout: 250000,
+        proprietaire_id: sampleClients[0].id,
+        ajouterPar_id: adminUser.id
+      },
+      {
+        nom: 'Compresseur Atlas Copco',
+        marque: 'Atlas Copco',
+        modele: 'GA 90',
+        type_equipement: 'COMPRESSEUR',
+        etatDeReception: 'Nécessite maintenance',
+        valeur: '180000 MAD',
+        cout: 180000,
+        proprietaire_id: sampleClients[1].id,
+        ajouterPar_id: sampleUsers[0].id
+      },
+      {
+        nom: 'Pompe Centrifuge',
+        marque: 'Grundfos',
+        modele: 'NB 65-315',
+        type_equipement: 'POMPE_INDUSTRIELLE',
+        etatDeReception: 'Bon état',
+        valeur: '45000 MAD',
+        cout: 45000,
+        proprietaire_id: sampleClients[2].id,
+        ajouterPar_id: sampleUsers[1].id
+      }
+    ], { transaction });
+
+    console.log('✅ Sample equipment created');
+
+    // Create sample interventions
+    const today = new Date();
+    const nextWeek = new Date(today);
+    nextWeek.setDate(today.getDate() + 7);
+    const lastMonth = new Date(today);
+    lastMonth.setMonth(today.getMonth() - 1);
+
+    const sampleInterventions = await Intervention.bulkCreate([
+      {
+        date: today,
+        description: 'Maintenance préventive mensuelle du moteur principal',
+        statut: 'EN_COURS',
+        urgence: false,
+        creerPar_id: sampleUsers[0].id,
+        equipement_id: sampleEquipment[0].id
+      },
+      {
+        date: nextWeek,
+        description: 'Révision complète du transformateur - contrôle isolement',
+        statut: 'PLANIFIEE',
+        urgence: false,
+        creerPar_id: sampleUsers[1].id,
+        equipement_id: sampleEquipment[1].id
+      },
+      {
+        date: today,
+        description: 'Réparation urgente - fuite d\'huile compresseur',
+        statut: 'EN_COURS',
+        urgence: true,
+        creerPar_id: sampleUsers[0].id,
+        equipement_id: sampleEquipment[2].id
+      },
+      {
+        date: lastMonth,
+        description: 'Remplacement des roulements pompe centrifuge',
+        statut: 'TERMINEE',
+        urgence: false,
+        creerPar_id: sampleUsers[2].id,
+        equipement_id: sampleEquipment[3].id
+      }
+    ], { transaction });
+
+    console.log('✅ Sample interventions created');
+
+    // Commit transaction
+    await transaction.commit();
+    console.log('🎉 Database seeding completed successfully!');
+
+    // Display login information and section details
+    console.log('\n📝 Login Information:');
+    console.log('------------------------');
+    console.log('Admin User:');
+    console.log('  Username: admin');
+    console.log('  Password: admin123');
+    console.log('  Section: Administration');
+    console.log('\nSample Users:');
+    console.log('  Username: jdupont | Password: password123 | Section: Maintenance Préventive (Chef)');
+    console.log('  Username: mmartin | Password: password123 | Section: Maintenance Corrective (Chef)');
+    console.log('  Username: pbernard | Password: password123 | Section: Rénovation');
+    console.log('------------------------\n');
 
   } catch (error) {
     await transaction.rollback();
-    console.error('❌ Database seeding failed:', error);
+    console.error('❌ Seeding failed:', error);
     throw error;
   }
 };
 
-module.exports = {
-  seedDatabase
-};
+// Run seeding if called directly
+if (require.main === module) {
+  seedDatabase()
+    .then(() => process.exit(0))
+    .catch(error => {
+      console.error(error);
+      process.exit(1);
+    });
+}
+
+module.exports = { seedDatabase };

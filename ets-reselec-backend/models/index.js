@@ -23,7 +23,7 @@ const GestionAdministrative = require('./GestionAdministrative');
 
 // User associations
 User.belongsTo(Role, { foreignKey: 'role_id', as: 'role' });
-User.belongsTo(Section, { foreignKey: 'section_id', as: 'sectionBelongsTo' });
+User.belongsTo(Section, { foreignKey: 'section_id', as: 'section' }); // Updated: now using proper foreign key
 User.hasMany(Client, { foreignKey: 'cree_par_id', as: 'clientsCrees' });
 User.hasMany(Equipment, { foreignKey: 'ajouterPar_id', as: 'equipementsAjoutes' });
 User.hasMany(Intervention, { foreignKey: 'creerPar_id', as: 'interventionsCrees' });
@@ -48,7 +48,7 @@ Permission.belongsToMany(Role, {
 
 // Section associations
 Section.belongsTo(User, { foreignKey: 'responsable_id', as: 'responsable' });
-Section.hasMany(User, { foreignKey: 'section_id', as: 'utilisateurs' });
+Section.hasMany(User, { foreignKey: 'section_id', as: 'utilisateurs' }); // NEW: Users belong to sections
 Section.belongsToMany(Intervention, {
   through: 'Section_Intervention',
   foreignKey: 'section_id',

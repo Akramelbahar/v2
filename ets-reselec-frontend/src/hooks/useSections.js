@@ -1,4 +1,4 @@
-// hooks/useSections.js
+
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { sectionService } from '../services/sectionService';
 import toast from 'react-hot-toast';
@@ -6,13 +6,9 @@ import toast from 'react-hot-toast';
 export const useSections = (params = {}) => {
   return useQuery({
     queryKey: ['sections', params],
-    queryFn: () => sectionService.getAll(params).then(res => {
-      // The API returns { success: true, data: [...], pagination: {...} }
-      // We need to return the whole structure, not just res.data.data
-      return res.data;
-    }),
+    queryFn: () => sectionService.getAll(params).then(res => res.data.data || res.data),
     keepPreviousData: true,
-    staleTime: 300000
+    staleTime: 600000
   });
 };
 
@@ -21,7 +17,7 @@ export const useSection = (id) => {
     queryKey: ['section', id],
     queryFn: () => sectionService.getById(id).then(res => res.data.data),
     enabled: !!id,
-    staleTime: 300000
+    staleTime: 600000
   });
 };
 
@@ -74,20 +70,10 @@ export const useDeleteSection = () => {
   });
 };
 
-export const useAssignUsersToSection = () => {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: ({ id, userIds }) => sectionService.assignUsers(id, userIds),
-    onSuccess: (data, variables) => {
-      queryClient.invalidateQueries(['sections']);
-      queryClient.invalidateQueries(['section', variables.id]);
-      queryClient.invalidateQueries(['users']);
-      toast.success('Utilisateurs assignés avec succès');
-    },
-    onError: (error) => {
-      const message = error.response?.data?.message || 'Erreur lors de l\'assignation des utilisateurs';
-      toast.error(message);
-    }
+export const useSectionTypes = () => {
+  return useQuery({
+    queryKey: ['section-types'],
+    queryFn: () => sectionService.getTypes().then(res => res.data.data),
+    staleTime: 3600000 // 1 hour - types don't change often
   });
 };
